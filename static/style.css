@@ -1,0 +1,163 @@
+/* Paleta Industrial:
+   - Charcoal (Fondo Oscuro/Navbar): #212529
+   - Steel Gray (Primario/Tarjetas Oscuras): #495057
+   - Accent Blue (Acción/Botones): #00b0ff
+   - Light Gray (Fondo Claro/Body): #f8f9fa
+*/
+
+:root {
+    --color-charcoal: #212529;
+    --color-steel: #495057;
+    --color-accent: #00b0ff;
+    --color-light-gray: #f8f9fa;
+    --color-text-dark: #212529;
+}
+
+/* Clases de Utilidad para Bootstrap */
+.bg-charcoal { background-color: var(--color-charcoal) !important; }
+.bg-steel { background-color: var(--color-steel) !important; }
+.text-accent { color: var(--color-accent) !important; }
+.btn-accent { 
+    background-color: var(--color-accent); 
+    border-color: var(--color-accent);
+    color: var(--color-charcoal);
+    border-radius: 0;
+}
+.btn-accent:hover {
+    background-color: #008cd4; /* Un poco más oscuro al pasar el ratón */
+    border-color: #008cd4;
+    color: var(--color-charcoal);
+}
+.btn-outline-accent { 
+    color: var(--color-accent); 
+    border-color: var(--color-accent);
+    border-radius: 0;
+}
+.btn-outline-accent:hover {
+    background-color: var(--color-accent);
+    color: var(--color-charcoal);
+}
+.bg-light-gray {
+    background-color: var(--color-light-gray) !important;
+}
+
+
+body {
+    /* Nuevo fondo claro */
+    background-color: var(--color-light-gray); 
+    /* Fuente seria y legible */
+    font-family: 'Roboto', sans-serif;
+    color: var(--color-text-dark); /* Color de texto más oscuro */
+}
+
+h1, h2, h3, h4, h5, h6 {
+    /* Títulos con fuente fuerte y mayúsculas */
+    font-family: 'Oswald', sans-serif;
+    text-transform: uppercase;
+    color: var(--color-steel) !important;
+}
+
+/* Centrar el formulario de login */
+.login-container {
+    max-width: 400px;
+    margin-top: 10vh;
+    padding: 30px;
+    background-color: #ffffff;
+    /* Quitamos el redondeo para un look más serio/industrial */
+    border-radius: 0; 
+    /* Sombra fuerte pero simple */
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2); 
+    border: 1px solid var(--color-steel);
+}
+
+/* Formularios - Bordes marcados */
+.form-control, .form-select {
+    border-radius: 0;
+    border: 1px solid var(--color-steel);
+}
+.form-control:focus, .form-select:focus {
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 0.25rem rgba(0, 176, 255, 0.25); /* Sombra de foco azul */
+}
+
+/* Tarjetas */
+.card {
+    border-radius: 0; /* Bordes rectos */
+    border: 1px solid #ced4da;
+    box-shadow: none !important; /* Eliminamos sombras suaves */
+}
+.card-header {
+    /* Encabezados de tarjeta con color Steel Gray */
+    background-color: var(--color-steel) !important;
+    color: #ffffff !important;
+    font-family: 'Oswald', sans-serif;
+    text-transform: uppercase;
+}
+.card .list-group-item {
+    border-radius: 0;
+}
+
+
+/* Estilo para tarjetas de ticket */
+.ticket-card {
+    transition: none; 
+    border: 1px solid #dee2e6;
+    border-left: 5px solid; /* Usaremos este borde para el estado */
+    border-radius: 0 !important; /* Aseguramos bordes rectos */
+}
+.ticket-card:hover {
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    /* Fondo ligeramente oscuro al pasar el ratón */
+    background-color: var(--color-light-gray); 
+}
+
+/* Estilos para los estados de ticket más serios (colores industriales/subditos) */
+/* Abierto: Necesita atención (Gris claro con borde azul) */
+.estado-Abierto {
+    border-color: var(--color-accent); /* Azul de alerta */
+    background-color: rgba(0, 176, 255, 0.1); 
+    color: var(--color-steel); 
+}
+/* En Progreso: Trabajo en curso (Gris oscuro/Steel) */
+.estado-En-Progreso {
+    border-color: var(--color-steel); 
+    background-color: #e9ecef;
+    color: var(--color-steel);
+}
+/* Resuelto: Éxito (Verde oscuro/sobrio) */
+.estado-Resuelto {
+    border-color: #1a7500; 
+    background-color: #e6ffe6; 
+    color: #1a7500;
+}
+/* Rechazado: Problema/Error (Rojo sobrio) */
+.estado-Rechazado {
+    border-color: #b02a37; 
+    background-color: #fceceb; 
+    color: #b02a37;
+}
+
+/* Estilo para la foto del ticket */
+.ticket-photo-container {
+    max-width: 600px; /* Tamaño máximo para la foto */
+    margin: 15px 0;
+    border: 1px solid var(--color-steel); /* Borde de metal */
+    padding: 5px;
+    background-color: #ffffff;
+    border-radius: 0;
+}
+
+.ticket-photo {
+    max-width: 100%;
+    height: auto;
+    display: block;
+}
+
+/* Comentarios */
+.comentario-admin {
+    background-color: #e9ecef !important; /* Gris claro para Admin */
+    border-left: 5px solid var(--color-steel); /* Borde de steel */
+}
+.comentario-user {
+    border-left: 5px solid var(--color-accent); /* Borde de acción */
+}
