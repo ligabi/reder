@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+
+{% block title %}Ticket #{{ ticket.reference_number }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                <h3 class="mb-0">Referencia #{{ ticket.reference_number }} - {{ ticket.titulo }}</h3>
+                <span class="badge fs-6 rounded-pill estado-{{ ticket.estado | replace(' ', '-') }} p-2">
+                    {{ ticket.estado }}
+                </span>
+            </div>
+            <div class="card-body">
+                <p class="card-text">
+                    <strong>Descripción:</strong>
+                    <br><span class="text-muted">{{ ticket.descripcion | replace('\n', '<br>') | safe }}</span>
+                </p>
+                
+                <p class="card-text">
+                    <strong>Zona Asignada:</strong>
+                    <br><span class="badge bg-secondary p-2">{{ ticket.zona.nombre if ticket.zona else 'Sin Zona Asignada' }}</span>
+                </p>
+                <hr>
+                
+                {% if ticket.photo_path %}
+                <div class="ticket-photo-container">
+                    <img src="{{ url_for('uploaded_file', filename=ticket.photo_path) }}" alt="Foto adjunta al ticket" class="ticket-photo">
+                </div>
+                {% endif %}
+                
+                <hr>
+                <small class="d-block">
+                    <strong>Creador:</strong> <span class="fw-bold text-dark">{{ creador_nombre }}</span> (Usuario {{ creador_acceso }})
+                </small>
+                <small class="text-secondary">
+                    <strong>Fecha de Creación:</strong> {{ ticket.fecha_creacion.strftime('%Y-%m-%d %H:%M') }}
+                </small>
+            </div>
+        </div>
+
+        <h4 class="mb-3 text-secondary">💬 Historial de Interacciones ({{ comentarios | length }})</h4>
+        {% if comentarios %}
+            <div class="list-group mb-4">
+            {% for comentario in comentarios %}
+                <div class="list-group-item list-group-item-action">
+                    <div class="d-flex w-100 justify-content-between">
+                        <h6 class="mb-1 {% if comentario.usuario_acceso == '9898' %}text-dark{% elif comentario.usuario_acceso == creador_acceso %}text-primary{% else %}text-secondary{% endif %}">
+                            <span class="fw-bold">
+                                {{ 'ADMINISTRADOR 👨‍💼' if comentario.usuario_acceso == '9898' else 'Usuario ' + comentario.usuario_acceso }}
+                            </span>
+                        </h6>
+                        <small class="text-muted">{{ comentario.fecha_creacion.strftime('%Y-%m-%d %H:%M') }}</small>
+                    </div>
+                    <p class="mb-1">{{ comentario.texto }}</p>
+                </div>
+            {% endfor %}
+            </div>
+        {% else %}
+            <div class="alert alert-light border-secondary">Aún no hay interacciones registradas.</div>
+        {% endif %}
+
+        {% if puede_comentar %}
+        <div class="card mt-4 border-primary">
+            <div class="card-body">
+                <h5 class="card-title text-primary">Registrar Nueva Interacción</h5>
+                <form method="POST" action="{{ url_for('comentar_ticket', ticket_id=ticket.id) }}">
+                    <div class="mb-3">
+                        <textarea class="form-control" name="texto" rows="3" required placeholder="Escribe un comentario o actualización..."></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Enviar Comentario</button>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+
+    </div>
+
+    {% if g.rol == 'admin' %}
+    <div class="col-lg-4">
+        <div class="card shadow-sm border-dark sticky-top" style="top: 1rem;">
+            <div class="card-header bg-dark text-white">
+                Opciones de Gestión
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('modificar_ticket', ticket_id=ticket.id) }}">
+                    
+                    <h6 class="card-subtitle mb-2 text-dark">Número de Referencia (4 dígitos)</h6>
+                    <div class="mb-3">
+                        <input type="text" 
+                               class="form-control" 
+                               name="reference_number" 
+                               value="{{ ticket.reference_number or '' }}" 
+                               maxlength="4"
+                               placeholder="Ej: 100A">
+                    </div>
+                    
+                    <h6 class="card-subtitle mb-2 text-dark">Modificar Estado</h6>
+                    <div class="mb-3">
+                        <select class="form-select" name="estado">
+                            <option value="Abierto" {% if ticket.estado == 'Abierto' %}selected{% endif %}>Abierto</option>
+                            <option value="En Progreso" {% if ticket.estado == 'En Progreso' %}selected{% endif %}>En Progreso</option>
+                            <option value="Resuelto" {% if ticket.estado == 'Resuelto' %}selected{% endif %}>Resuelto</option>
+                            <option value="Rechazado" {% if ticket.estado == 'Rechazado' %}selected{% endif %}>Rechazado</option>
+                        </select>
+                    </div>
+                    
+                    <h6 class="card-subtitle mb-2 text-dark mt-3">Modificar Zona</h6>
+                    <div class="mb-3">
+                        <select class="form-select" name="zona_id">
+                            <option value="0">Sin Zona</option>
+                            {% for zona in zonas %}
+                                <option value="{{ zona.id }}" {% if ticket.zona_id == zona.id %}selected{% endif %}>
+                                    {{ zona.nombre }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <h6 class="card-subtitle mb-2 text-dark">Ajustar Descripción</h6>
+                    <div class="mb-3">
+                        <textarea class="form-control" name="descripcion" rows="3">{{ ticket.descripcion }}</textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Aplicar Cambios</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+</div>
+<div class="mt-4">
+    <a href="{{ url_for('panel_inicio') }}" class="btn btn-outline-secondary">← Volver al Panel</a>
+</div>
+{% endblock %}
