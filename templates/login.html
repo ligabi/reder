@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block title %}Inicio de Sesión{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="login-container">
+            <h2 class="text-center mb-4 text-dark">🚪 Acceso al Sistema</h2>
+            
+            {% if error %}
+            <div class="alert alert-danger" role="alert">
+                {{ error }}
+            </div>
+            {% endif %}
+
+            <form method="POST" action="{{ url_for('login') }}">
+                <div class="mb-3">
+                    <label for="codigo_acceso" class="form-label">Código de Acceso (4 dígitos / 9898 Admin)</label>
+                    <input type="password" 
+                           class="form-control" 
+                           id="codigo_acceso" 
+                           name="codigo_acceso" 
+                           required 
+                           maxlength="4">
+                </div>
+                <button type="submit" class="btn btn-accent w-100">Ingresar</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
