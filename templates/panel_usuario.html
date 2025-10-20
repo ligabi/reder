@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block title %}Panel de Usuario - Mis Tickets{% endblock %}
+
+{% block content %}
+<h1 class="mb-4 text-dark">📋 Mis Tickets de Incidencia</h1>
+
+<div class="row">
+    <div class="col-md-4 mb-4">
+        <div class="card shadow-sm border-primary">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">➕ Nuevo Reporte</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('crear_ticket') }}" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="titulo" class="form-label">Título</label>
+                        <input type="text" class="form-control" id="titulo" name="titulo" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="descripcion" class="form-label">Descripción Detallada</label>
+                        <textarea class="form-control" id="descripcion" name="descripcion" rows="4" required></textarea>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="zona_id" class="form-label">Zona</label>
+                        <select class="form-select" id="zona_id" name="zona_id">
+                            <option value="0">Sin Zona (Opcional)</option>
+                            {% for zona in zonas %}
+                                <option value="{{ zona.id }}">{{ zona.nombre }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="photo" class="form-label">Adjuntar Foto (Opcional)</label>
+                        <input type="file" class="form-control" id="photo" name="photo" accept="image/png, image/jpeg, image/gif">
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Crear Ticket</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-8">
+        <h2 class="text-secondary mb-3">Seguimiento</h2>
+        
+        <div class="card mb-4 shadow-sm border-secondary">
+            <div class="card-body p-3">
+                <form method="GET" action="{{ url_for('panel_usuario') }}" class="row g-2">
+                    <div class="col-md-10">
+                        <input type="text" 
+                               class="form-control" 
+                               name="search_ref" 
+                               placeholder="Buscar por Referencia de Ticket (Ej: 0001)"
+                               value="{{ search_ref or '' }}">
+                    </div>
+                    <div class="col-md-2">
+                        <button type="submit" class="btn btn-dark w-100">Buscar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        <h2 class="text-secondary mb-3">Resultados ({{ tickets | length }})</h2>
+        {% if tickets %}
+            <div class="list-group">
+            {% for ticket in tickets %}
+                <a href="{{ url_for('ver_ticket', ticket_id=ticket.id) }}" 
+                   class="list-group-item list-group-item-action ticket-card mb-3 p-3">
+                    <div class="d-flex w-100 justify-content-between">
+                        <h5 class="mb-1 text-dark">#{{ ticket.reference_number }} - {{ ticket.titulo }}</h5>
+                        <span class="badge rounded-pill estado-{{ ticket.estado | replace(' ', '-') }} p-2">
+                            {{ ticket.estado }}
+                        </span>
+                    </div>
+                    <p class="mb-1 text-muted text-truncate">{{ ticket.descripcion }}</p>
+                    <small class="text-secondary">
+                        Zona: <span class="fw-bold">{{ ticket.zona.nombre if ticket.zona else 'N/A' }}</span> | Creado por: <span class="fw-bold">{{ ticket.creador.nombre_completo if ticket.creador else 'N/A' }}</span>
+                        | Creado el: {{ ticket.fecha_creacion.strftime('%Y-%m-%d %H:%M') }}
+                    </small>
+                </a>
+            {% endfor %}
+            </div>
+        {% else %}
+            <div class="alert alert-info border-info">
+                {% if search_ref %}
+                    No se encontraron tickets con la referencia "{{ search_ref }}".
+                {% else %}
+                    No has creado tickets aún.
+                {% endif %}
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
