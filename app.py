@@ -449,17 +449,26 @@ def comentar_ticket(ticket_id):
 def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
-# --- Inicialización y Ejecución ---
-
+# --- Inicialización y Ejecución --
 def init_db():
     with app.app_context(): 
         # Esta línea crea la carpeta 'uploads' si no existe
         if not os.path.exists(app.config['UPLOAD_FOLDER']):
              os.makedirs(app.config['UPLOAD_FOLDER'])
-        # Esta línea crea las tablas en la Base de Datos
-        db.create_all()
+        
+        # Esta línea es la que CREA las tablas en la base de datos
+        db.create_all() 
+        
+        # Lógica Opcional de Inserción Inicial (¡Solo si necesitas datos por defecto!)
+        # if Zona.query.count() == 0:
+        #     zona1 = Zona(nombre='Planta Baja')
+        #     db.session.add(zona1)
+        #     db.session.commit()
+        #     print("Zona inicial creada.")
+        
         print("Base de datos inicializada y tablas creadas.")
 
 if __name__ == '__main__':
     init_db() 
+
     app.run(debug=True, host='0.0.0.0')
