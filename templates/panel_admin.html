@@ -3,7 +3,7 @@
 {% block title %}Panel de Administrador{% endblock %}
 
 {% block content %}
-<h1 class="mb-4 text-dark">馃憫 Panel de Administraci贸n</h1>
+<h1 class="mb-4 text-dark"> Panel de Administracion</h1>
 
 <div class="row">
     <div class="col-lg-4">
@@ -33,10 +33,10 @@
         
         <div class="card shadow-sm mb-4">
             <div class="card-header bg-dark text-white">
-                Gesti贸n de Zonas ({{ zonas | length }})
+                Gestión de Zonas ({{ zonas | length }})
             </div>
             <div class="card-body">
-                <h5 class="card-title text-secondary">A帽adir Nueva Zona</h5>
+                <h5 class="card-title text-secondary">Crear Nueva Zona</h5>
                 <form method="POST" action="{{ url_for('gestionar_zonas') }}" class="mb-4">
                     <div class="input-group">
                         <input type="text" 
@@ -57,7 +57,7 @@
                             <input type="hidden" name="eliminar_zona_id" value="{{ zona.id }}">
                             <button type="submit" 
                                     class="btn btn-sm btn-outline-danger" 
-                                    onclick="return confirm('驴Seguro que quieres eliminar la zona {{ zona.nombre }}? Los tickets se quedar谩n sin zona.')">
+                                    onclick="return confirm('Seguro que quieres eliminar la zona {{ zona.nombre }}? Los tickets se quedaran sin zona.')">
                                 Eliminar
                             </button>
                         </form>
@@ -78,14 +78,14 @@
                         <input type="text" 
                                class="form-control" 
                                name="nombre_completo" 
-                               placeholder="Ej: Juan P茅rez"
+                               placeholder="Ej: Juan Perez"
                                required>
                     </div>
                     <div class="input-group">
                         <input type="text" 
                                class="form-control" 
                                name="numero_acceso" 
-                               placeholder="C贸digo (4 d铆gitos)" 
+                               placeholder="Codigo (4 digitos)" 
                                maxlength="4" 
                                required>
                         <button type="submit" class="btn btn-primary">Crear</button>
@@ -108,7 +108,7 @@
     <div class="col-lg-8">
         <div class="card shadow-sm mb-4">
             <div class="card-header bg-primary text-white">
-                Seguimiento y B煤squeda
+                Seguimiento y Busqueda
             </div>
             <div class="card-body">
                 <form method="GET" action="{{ url_for('panel_admin') }}" class="row g-2 mb-3">
@@ -127,7 +127,7 @@
                                value="{{ search_user or '' }}">
                     </div>
                     <div class="col-md-2">
-                        <button type="submit" class="btn btn-dark w-100">馃攳 Buscar</button>
+                        <button type="submit" class="btn btn-dark w-100"> Buscar</button>
                     </div>
                     {% if search_ref or search_user %}
                         <div class="col-12 mt-2">
@@ -146,11 +146,11 @@
                         <thead>
                             <tr>
                                 <th>Ref.</th>
-                                <th>T铆tulo</th>
+                                <th>Titulo</th>
                                 <th>Zona</th> <th>Creador</th>
                                 <th>Estado</th>
                                 <th>Fecha</th>
-                                <th>Acci贸n</th>
+                                <th>Acción</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -182,7 +182,7 @@
                     </table>
                 </div>
                 {% if not tickets %}
-                    <div class="alert alert-info mt-3">No hay tickets registrados o no coinciden con la b煤squeda.</div>
+                    <div class="alert alert-info mt-3">No hay tickets registrados o no coinciden con la busqueda.</div>
                 {% endif %}
             </div>
         </div>
