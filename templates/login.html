@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Inicio de Sesión{% endblock %}
+{% block title %}Inicio de Sesion{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center">
@@ -16,7 +16,7 @@
 
             <form method="POST" action="{{ url_for('login') }}">
                 <div class="mb-3">
-                    <label for="codigo_acceso" class="form-label">Código de Acceso (4 dígitos / 9898 Admin)</label>
+                    <label for="codigo_acceso" class="form-label">Codigo de Acceso (4 dígitos / 9898 Admin)</label>
                     <input type="password" 
                            class="form-control" 
                            id="codigo_acceso" 
