@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 
-{% block title %}Inicio de Sesion{% endblock %}
+{% block title %}Inicio de Sesión{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-md-6">
         <div class="login-container">
-            <h2 class="text-center mb-4 text-dark">🚪 Acceso al Sistema</h2>
+            <h2 class="text-center mb-4 text-accent">:: ACCESO AL SISTEMA ::</h2>
             
             {% if error %}
             <div class="alert alert-danger" role="alert">
@@ -16,7 +16,15 @@
 
             <form method="POST" action="{{ url_for('login') }}">
                 <div class="mb-3">
-                    <label for="codigo_acceso" class="form-label">Codigo de Acceso (4 dígitos / 9898 Admin)</label>
+                    <label for="nombre_acceso" class="form-label text-accent">NOMBRE DE USUARIO</label>
+                    <input type="text" 
+                           class="form-control" 
+                           id="nombre_acceso" 
+                           name="nombre_acceso" 
+                           required>
+                </div>
+                <div class="mb-3">
+                    <label for="codigo_acceso" class="form-label text-accent">CÓDIGO DE ACCESO (CONTRASEÑA)</label>
                     <input type="password" 
                            class="form-control" 
                            id="codigo_acceso" 
@@ -24,7 +32,7 @@
                            required 
                            maxlength="4">
                 </div>
-                <button type="submit" class="btn btn-accent w-100">Ingresar</button>
+                <button type="submit" class="btn btn-accent w-100 mt-3">INGRESAR</button>
             </form>
         </div>
     </div>
