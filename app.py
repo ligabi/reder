@@ -14,6 +14,7 @@ from flask_sqlalchemy import SQLAlchemy
 from functools import wraps
 from pathlib import Path
 from werkzeug.utils import secure_filename 
+from collections import defaultdict 
 
 # --- Configuración de Archivos y Aplicación Flask ---
 
@@ -27,8 +28,7 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 # Configuración de Flask y SQLAlchemy
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'una_clave_secreta_fuerte_y_larga_por_defecto_NO_USAR_EN_PRODUCCION') 
-# *** MODIFICACIÓN CLAVE PARA RENDER/POSTGRESQL ***
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///tickets.db')
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///tickets.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
@@ -42,7 +42,6 @@ def allowed_file(filename):
 
 # --- Modelos de la Base de Datos (SQLAlchemy) ---
 
-# NUEVO MODELO: Zona
 class Zona(db.Model):
     __tablename__ = 'zona'
     id = db.Column(db.Integer, primary_key=True)
@@ -50,9 +49,7 @@ class Zona(db.Model):
     tickets = db.relationship('Ticket', backref='zona', lazy=True)
 
 class Usuario(db.Model):
-    """Representa a un Usuario del sistema (Mantenimiento)."""
     __tablename__ = 'usuario' 
-    
     id = db.Column(db.Integer, primary_key=True)
     numero_acceso = db.Column(db.String(4), unique=True, nullable=False) 
     nombre_completo = db.Column(db.String(100), nullable=True, default='Mantenimiento') 
@@ -60,9 +57,7 @@ class Usuario(db.Model):
     tickets = db.relationship('Ticket', backref='creador', lazy=True)
 
 class Ticket(db.Model):
-    """Representa una incidencia reportada."""
     __tablename__ = 'ticket'
-    
     id = db.Column(db.Integer, primary_key=True)
     titulo = db.Column(db.String(100), nullable=False)
     descripcion = db.Column(db.Text, nullable=False)
@@ -70,17 +65,14 @@ class Ticket(db.Model):
     fecha_creacion = db.Column(db.DateTime, default=db.func.now())
     creador_id = db.Column(db.Integer, db.ForeignKey('usuario.id'), nullable=False) 
     comentarios = db.relationship('Comentario', backref='ticket', lazy=True, order_by="Comentario.fecha_creacion")
-    
     reference_number = db.Column(db.String(4), nullable=True) 
     photo_path = db.Column(db.String(255), nullable=True)     
-    
-    # NUEVO CAMPO: Clave Foránea a Zona
+    motivo_rechazo = db.Column(db.Text, nullable=True) 
+    acusado_por_usuario = db.Column(db.Boolean, default=False) 
     zona_id = db.Column(db.Integer, db.ForeignKey('zona.id'), nullable=True) 
 
 class Comentario(db.Model):
-    """Representa la realimentación en un ticket."""
     __tablename__ = 'comentario'
-    
     id = db.Column(db.Integer, primary_key=True)
     texto = db.Column(db.Text, nullable=False)
     fecha_creacion = db.Column(db.DateTime, default=db.func.now())
@@ -88,7 +80,7 @@ class Comentario(db.Model):
     usuario_id = db.Column(db.String(20), nullable=False) 
     usuario_acceso = db.Column(db.String(4), nullable=False) 
 
-# --- Lógica de Autenticación y Carga de Usuario (sin cambios) ---
+# --- Lógica de Autenticación y Carga de Usuario ---
 
 @app.before_request
 def load_logged_in_user():
@@ -123,7 +115,7 @@ def admin_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-# --- Rutas de Autenticación y Navegación (sin cambios) ---
+# --- Rutas de Autenticación y Navegación ---
 
 @app.route('/', methods=['GET', 'POST'])
 @app.route('/login', methods=['GET', 'POST'])
@@ -132,26 +124,32 @@ def login():
         return redirect(url_for('panel_inicio'))
         
     if request.method == 'POST':
+        nombre = request.form.get('nombre_acceso', '').strip() 
         codigo = request.form.get('codigo_acceso', '').strip()
         
-        if not codigo:
-            return render_template('login.html', error="El código de acceso no puede estar vacío.")
+        if not nombre or not codigo:
+            return render_template('login.html', error="El nombre de usuario y el código de acceso no pueden estar vacíos.")
 
+        # Lógica para Administrador (9898)
         if codigo == '9898':
+            if nombre.upper() != 'ADMINISTRADOR':
+                 return render_template('login.html', error="Nombre de usuario y/o código de acceso inválido.")
+                 
             session['user_id'] = 'ADMIN_ID' 
             session['rol'] = 'admin'
             session['numero_acceso'] = '9898'
             return redirect(url_for('panel_admin'))
         
+        # Lógica para Usuario (4 dígitos)
         elif len(codigo) == 4 and codigo.isdigit():
-            usuario = Usuario.query.filter_by(numero_acceso=codigo).first()
+            usuario = Usuario.query.filter_by(numero_acceso=codigo, nombre_completo=nombre).first()
             if usuario:
                 session['user_id'] = str(usuario.id) 
                 session['rol'] = 'user'
                 session['numero_acceso'] = codigo
                 return redirect(url_for('panel_usuario'))
             else:
-                return render_template('login.html', error="Usuario no registrado.")
+                return render_template('login.html', error="Nombre de usuario y/o código de acceso inválido.")
         
         return render_template('login.html', error="Código de acceso inválido.")
 
@@ -168,16 +166,30 @@ def panel_inicio():
     if g.rol == 'admin':
         return redirect(url_for('panel_admin'))
     elif g.rol == 'user':
-        return redirect(url_for('panel_usuario'))
+        # Redirige a la vista de "Crear Nuevo Reporte" (ruta por defecto del usuario)
+        return redirect(url_for('panel_usuario')) 
     else:
         return redirect(url_for('logout'))
 
-# --- Rutas de Usuario (MODIFICADA) ---
+# --- Rutas de Usuario ---
 
 @app.route('/mis_tickets')
 @login_required
 def panel_usuario():
-    """Vista del usuario: solo sus tickets y formulario para crear uno nuevo, con capacidad de búsqueda."""
+    """Ruta principal del usuario: solo muestra el formulario de nuevo reporte."""
+    if g.rol != 'user':
+        return redirect(url_for('panel_admin')) 
+
+    zonas = Zona.query.order_by(Zona.nombre).all()
+    
+    # mostrando_lista=False indica que se debe renderizar el formulario
+    return render_template('panel_usuario.html', zonas=zonas, mostrando_lista=False)
+
+
+@app.route('/tickets/gestion')
+@login_required
+def lista_tickets_usuario():
+    """Nueva ruta para la pestaña de gestión y listado de tickets."""
     if g.rol != 'user':
         return redirect(url_for('panel_admin')) 
 
@@ -186,22 +198,22 @@ def panel_usuario():
     except ValueError:
         abort(403) 
     
-    # 1. Base query: solo tickets creados por el usuario actual
+    # Filtro estricto por el ID del usuario logueado
     query = Ticket.query.filter_by(creador_id=user_db_id).order_by(Ticket.fecha_creacion.desc())
     
-    # 2. Búsqueda por número de referencia
     search_ref = request.args.get('search_ref', '').strip()
     
     if search_ref:
-        # Busca cualquier ticket cuyo número de referencia contenga el texto (LIKE)
         query = query.filter(Ticket.reference_number.like(f'%{search_ref}%'))
         
-    tickets = query.all()
+    # Usar join con isouter=True para manejar tickets sin zona
+    tickets = query.join(Zona, Ticket.zona_id == Zona.id, isouter=True).all()
     
-    # NUEVO: Obtener todas las zonas para el formulario
-    zonas = Zona.query.order_by(Zona.nombre).all()
-    
-    return render_template('panel_usuario.html', tickets=tickets, search_ref=search_ref, zonas=zonas)
+    # mostrando_lista=True indica que se debe renderizar la lista
+    return render_template('panel_usuario.html', 
+                           tickets=tickets, 
+                           search_ref=search_ref, 
+                           mostrando_lista=True)
 
 @app.route('/ticket/crear', methods=['POST'])
 @login_required
@@ -211,7 +223,7 @@ def crear_ticket():
 
     titulo = request.form.get('titulo', '').strip()
     descripcion = request.form.get('descripcion', '').strip()
-    zona_id = request.form.get('zona_id') # NUEVO: Obtener el ID de la zona
+    zona_id = request.form.get('zona_id') 
     
     if not titulo or not descripcion:
         return "Título y Descripción son requeridos.", 400
@@ -229,188 +241,167 @@ def crear_ticket():
                 os.makedirs(app.config['UPLOAD_FOLDER'])
                 
             filename = secure_filename(file.filename)
-            # Utilizar el timestamp para asegurar la unicidad del nombre
             import time
             unique_filename = f"{int(time.time())}_{filename}" 
             file_path = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
             file.save(file_path)
             photo_path = unique_filename 
 
-    # Determinar zona_id. Si es '0' o vacío, se guarda como None.
     zona_to_save = int(zona_id) if zona_id and zona_id.isdigit() and int(zona_id) != 0 else None
     
     nuevo_ticket = Ticket(
         titulo=titulo, 
         descripcion=descripcion, 
-        creador_id=creador_id_int,
-        estado='Abierto',
-        photo_path=photo_path,
-        zona_id=zona_to_save # NUEVO: Guardar la zona
+        creador_id=creador_id_int, 
+        estado='Abierto', 
+        photo_path=photo_path, 
+        zona_id=zona_to_save
     )
     db.session.add(nuevo_ticket)
     db.session.commit()
-    
-    # Asignar reference_number después del commit para usar el ID del ticket
     nuevo_ticket.reference_number = str(nuevo_ticket.id).zfill(4)
     db.session.commit()
-
-    return redirect(url_for('panel_usuario'))
     
-# --- Rutas de Administrador (MODIFICADA) ---
+    # Después de crear, redirige a la gestión de tickets
+    return redirect(url_for('lista_tickets_usuario')) 
 
-@app.route('/admin')
+# --- Rutas de Administrador ---
+
+@app.route('/admin', methods=['GET'])
 @admin_required
 def panel_admin():
-    """Vista del Administrador: ver todos los tickets, gestión de usuarios, conteo y búsqueda."""
-    
-    # 1. Base query para todos los tickets
-    query = Ticket.query.order_by(Ticket.fecha_creacion.desc())
-    
-    # 2. Parámetros de búsqueda
+    """Ruta principal del admin: Muestra la gestión de tickets."""
     search_ref = request.args.get('search_ref', '').strip()
-    search_user = request.args.get('search_user', '').strip()
     
+    query = Ticket.query.join(Usuario, Ticket.creador_id == Usuario.id, isouter=True)\
+                        .join(Zona, Ticket.zona_id == Zona.id, isouter=True)\
+                        .order_by(Ticket.fecha_creacion.desc())
+
     if search_ref:
-        query = query.filter(Ticket.reference_number.like(f'%{search_ref}%'))
+        search_term = f"%{search_ref}%"
+        query = query.filter(
+            db.or_(
+                Ticket.reference_number.ilike(search_term), 
+                Ticket.titulo.ilike(search_term)
+            )
+        )
+        
+    all_tickets = query.all()
+
+    status_groups = defaultdict(list)
+    status_counts = {'Abierto': 0, 'En Progreso': 0, 'Resuelto': 0, 'Rechazado': 0}
     
-    if search_user:
-        # Busca al usuario por su número de acceso
-        user = Usuario.query.filter_by(numero_acceso=search_user).first()
-        if user:
-            query = query.filter(Ticket.creador_id == user.id)
-        else:
-            # Si el usuario no existe, la búsqueda retorna vacío
-            query = query.filter(Ticket.creador_id == -1) 
+    for ticket in all_tickets:
+        estado = ticket.estado or 'Abierto'
+        
+        if estado in status_counts:
+            status_groups[estado].append(ticket)
+            status_counts[estado] += 1
             
-    tickets = query.all()
-    usuarios = Usuario.query.filter_by(rol='user').all() 
-    # NUEVO: Obtener todas las zonas para la gestión y visualización
-    zonas = Zona.query.order_by(Zona.nombre).all()
-
-    # 3. Conteo de tickets por estado para el resumen (calculado sobre TODOS los tickets)
-    status_counts = db.session.query(
-        Ticket.estado, db.func.count(Ticket.id)
-    ).group_by(Ticket.estado).all()
-    
-    counts = {s[0]: s[1] for s in status_counts}
-    
-    # Asegura que todos los estados aparezcan, incluso si el conteo es 0
-    full_counts = {
-        'Abierto': counts.get('Abierto', 0),
-        'En Progreso': counts.get('En Progreso', 0),
-        'Resuelto': counts.get('Resuelto', 0),
-        'Rechazado': counts.get('Rechazado', 0)
-    }
-
+    # Solo pasamos datos de tickets y la pestaña activa
     return render_template('panel_admin.html', 
-                           tickets=tickets, 
-                           usuarios=usuarios, 
-                           status_counts=full_counts,
-                           search_ref=search_ref, 
-                           search_user=search_user,
-                           zonas=zonas # NUEVO: Pasar zonas
-                          )
+                           status_counts=status_counts, 
+                           status_groups=status_groups,
+                           search_ref=search_ref,
+                           tickets=all_tickets, 
+                           active_tab='tickets') # Pestaña activa por defecto
 
-# NUEVA RUTA: Gestión de Zonas (Creación y Eliminación)
+
+@app.route('/admin/usuarios', methods=['GET'])
+@admin_required
+def gestion_usuarios_admin():
+    """Nueva ruta para la pestaña de gestión de usuarios."""
+    usuarios = Usuario.query.filter_by(rol='user').order_by(Usuario.numero_acceso).all() 
+    return render_template('panel_admin.html', 
+                           usuarios=usuarios,
+                           active_tab='usuarios') # Pestaña activa 'usuarios'
+
+
+@app.route('/admin/zonas/view', methods=['GET'])
+@admin_required
+def gestion_zonas_admin():
+    """Nueva ruta para la pestaña de gestión de zonas."""
+    zonas = Zona.query.order_by(Zona.nombre).all()
+    return render_template('panel_admin.html', 
+                           zonas=zonas,
+                           active_tab='zonas') # Pestaña activa 'zonas'
+
+
 @app.route('/admin/zonas', methods=['POST'])
 @admin_required
 def gestionar_zonas():
-    # 1. Crear nueva zona
     nombre_zona = request.form.get('nombre_zona', '').strip()
     if nombre_zona:
         if not Zona.query.filter_by(nombre=nombre_zona).first():
             nueva_zona = Zona(nombre=nombre_zona)
             db.session.add(nueva_zona)
             db.session.commit()
-        return redirect(url_for('panel_admin'))
-    
-    # 2. Eliminar zona
+        # Redirigir a la nueva pestaña de Zonas
+        return redirect(url_for('gestion_zonas_admin'))
+
     zona_id_a_eliminar = request.form.get('eliminar_zona_id')
     if zona_id_a_eliminar and zona_id_a_eliminar.isdigit():
         zona = Zona.query.get(int(zona_id_a_eliminar))
         if zona:
-            # Reasignar tickets a NULL antes de eliminar la zona para evitar errores de FK
-            # Nota: Usamos 'zona_id': None en un diccionario para la función update()
             Ticket.query.filter_by(zona_id=zona.id).update({'zona_id': None}, synchronize_session=False)
             db.session.delete(zona)
             db.session.commit()
-        return redirect(url_for('panel_admin'))
-
-    return redirect(url_for('panel_admin'))
+        # Redirigir a la nueva pestaña de Zonas
+        return redirect(url_for('gestion_zonas_admin'))
+        
+    return redirect(url_for('gestion_zonas_admin'))
 
 @app.route('/admin/usuario/crear', methods=['POST'])
 @admin_required
 def crear_usuario():
-    # ... (Lógica de creación de usuario, sin cambios) ...
-    numero_acceso = request.form.get('numero_acceso', '').strip()
     nombre_completo = request.form.get('nombre_completo', '').strip()
+    numero_acceso = request.form.get('numero_acceso', '').strip()
     
     if len(numero_acceso) != 4 or not numero_acceso.isdigit():
-        return "El número debe ser de 4 dígitos y solo números.", 400
-        
-    if not nombre_completo:
-        return "El nombre completo es requerido.", 400
+        return "El código de acceso debe ser de 4 dígitos.", 400
 
     if Usuario.query.filter_by(numero_acceso=numero_acceso).first():
-        return f"El usuario {numero_acceso} ya existe.", 409
+        return "Ya existe un usuario con ese código de acceso.", 400
         
-    nuevo_usuario = Usuario(numero_acceso=numero_acceso, nombre_completo=nombre_completo, rol='user')
+    nuevo_usuario = Usuario(nombre_completo=nombre_completo, numero_acceso=numero_acceso, rol='user')
     db.session.add(nuevo_usuario)
     db.session.commit()
-    return redirect(url_for('panel_admin'))
+    # Redirigir a la nueva pestaña de Usuarios
+    return redirect(url_for('gestion_usuarios_admin'))
 
-@app.route('/admin/ticket/modificar/<int:ticket_id>', methods=['POST'])
-@admin_required
-def modificar_ticket(ticket_id):
-    ticket = Ticket.query.get_or_404(ticket_id)
-    
-    nuevo_estado = request.form.get('estado')
-    nueva_descripcion = request.form.get('descripcion')
-    nueva_referencia = request.form.get('reference_number', '').strip()
-    zona_id = request.form.get('zona_id') # NUEVO: Obtener el ID de la zona
-    
-    estados_permitidos = ['Abierto', 'En Progreso', 'Resuelto', 'Rechazado']
-    
-    if nuevo_estado and nuevo_estado in estados_permitidos:
-        ticket.estado = nuevo_estado
-    
-    if nueva_descripcion:
-        ticket.descripcion = nueva_descripcion
-        
-    if nueva_referencia and len(nueva_referencia) <= 4 and nueva_referencia.isalnum(): 
-        ticket.reference_number = nueva_referencia
-        
-    # NUEVO: Actualizar Zona
-    if zona_id is not None and zona_id.isdigit():
-        zona_to_save = int(zona_id)
-        if zona_to_save == 0:
-            ticket.zona_id = None
-        else:
-            ticket.zona_id = zona_to_save
-    
-    db.session.commit()
-    return redirect(url_for('ver_ticket', ticket_id=ticket_id))
-
-# --- Rutas de Detalle y Archivos (MODIFICADA) ---
+# --- Rutas de Tickets (Compartidas) ---
 
 @app.route('/ticket/<int:ticket_id>')
 @login_required
 def ver_ticket(ticket_id):
     ticket = Ticket.query.get_or_404(ticket_id)
     
-    if g.rol == 'user' and str(ticket.creador_id) != g.user_id:
-        abort(403) 
-        
-    comentarios = ticket.comentarios 
+    puede_ver = False
+    if g.rol == 'admin':
+        puede_ver = True
+    elif g.rol == 'user' and str(ticket.creador_id) == g.user_id:
+        puede_ver = True
     
+    if not puede_ver:
+        abort(403)
+
     creador = Usuario.query.get(ticket.creador_id)
+    creador_nombre = creador.nombre_completo if creador else 'N/A'
+    creador_acceso = creador.numero_acceso if creador else 'N/A'
+
+    comentarios = Comentario.query.filter_by(ticket_id=ticket_id).order_by(Comentario.fecha_creacion).all()
     
-    creador_nombre = creador.nombre_completo if creador else 'Desconocido'
-    creador_acceso = creador.numero_acceso if creador else 'N/A' 
+    user_ids = [c.usuario_id for c in comentarios if c.usuario_id.isdigit()]
+    
+    users_who_commented = Usuario.query.filter(Usuario.id.in_(user_ids)).all()
+    user_map = {str(u.id): u.nombre_completo for u in users_who_commented}
+    user_map['ADMIN_ID'] = 'ADMINISTRADOR' 
+
+    for c in comentarios:
+        c.nombre_completo = user_map.get(c.usuario_id, f"USR {c.usuario_acceso}") 
     
     puede_comentar = (g.rol == 'admin') or (g.rol == 'user' and str(ticket.creador_id) == g.user_id)
-    
-    # NUEVO: Obtener todas las zonas para el formulario de edición del Admin
+
     zonas = Zona.query.order_by(Zona.nombre).all()
     
     return render_template('ver_ticket.html', 
@@ -419,7 +410,7 @@ def ver_ticket(ticket_id):
         creador_nombre=creador_nombre,
         creador_acceso=creador_acceso,
         puede_comentar=puede_comentar,
-        zonas=zonas # NUEVO: Pasar zonas al template
+        zonas=zonas 
     )
 
 @app.route('/ticket/<int:ticket_id>/comentar', methods=['POST'])
@@ -431,7 +422,6 @@ def comentar_ticket(ticket_id):
     if not texto:
         return "El comentario no puede estar vacío.", 400
 
-    # Corregir lógica de control de acceso para comentar
     if g.rol == 'user' and str(ticket.creador_id) != g.user_id: 
         abort(403) 
 
@@ -445,30 +435,87 @@ def comentar_ticket(ticket_id):
     db.session.commit()
     return redirect(url_for('ver_ticket', ticket_id=ticket_id))
 
+@app.route('/ticket/<int:ticket_id>/estado', methods=['POST'])
+@admin_required
+def cambiar_estado(ticket_id):
+    ticket = Ticket.query.get_or_404(ticket_id)
+    nuevo_estado = request.form.get('estado')
+    motivo_rechazo = request.form.get('motivo_rechazo', '').strip()
+    
+    estados_validos = ['Abierto', 'En Progreso', 'Resuelto', 'Rechazado']
+    if nuevo_estado not in estados_validos:
+        return "Estado inválido.", 400
+
+    ticket.estado = nuevo_estado
+    
+    if nuevo_estado == 'Rechazado' and motivo_rechazo:
+        ticket.motivo_rechazo = motivo_rechazo
+    elif nuevo_estado != 'Rechazado':
+        ticket.motivo_rechazo = None
+
+    db.session.commit()
+    return redirect(url_for('ver_ticket', ticket_id=ticket_id))
+
+@app.route('/ticket/<int:ticket_id>/editar/admin', methods=['POST'])
+@admin_required
+def editar_ticket_admin(ticket_id):
+    ticket = Ticket.query.get_or_404(ticket_id)
+    
+    ticket.titulo = request.form.get('titulo', ticket.titulo)
+    ticket.descripcion = request.form.get('descripcion', ticket.descripcion)
+    reference_number = request.form.get('reference_number', '').strip()
+    
+    zona_id = request.form.get('zona_id')
+    zona_to_save = int(zona_id) if zona_id and zona_id.isdigit() and int(zona_id) != 0 else None
+    ticket.zona_id = zona_to_save
+    
+    if reference_number and len(reference_number) == 4:
+         ticket.reference_number = reference_number
+
+    db.session.commit()
+    return redirect(url_for('ver_ticket', ticket_id=ticket_id))
+
+@app.route('/ticket/<int:ticket_id>/acusar_cierre', methods=['POST'])
+@login_required
+def acusar_cierre(ticket_id):
+    ticket = Ticket.query.get_or_404(ticket_id)
+    
+    if g.rol != 'user' or str(ticket.creador_id) != g.user_id:
+        abort(403)
+    
+    if ticket.estado in ['Resuelto', 'Rechazado'] and not ticket.acusado_por_usuario:
+        ticket.acusado_por_usuario = True
+        db.session.commit()
+        
+    return redirect(url_for('ver_ticket', ticket_id=ticket_id))
+
+
+# --- Rutas de Archivos ---
+
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
-# --- Inicialización y Ejecución --
-def init_db():
-    with app.app_context(): 
-        # Esta línea crea la carpeta 'uploads' si no existe
-        if not os.path.exists(app.config['UPLOAD_FOLDER']):
-             os.makedirs(app.config['UPLOAD_FOLDER'])
-        
-        # Esta línea es la que CREA las tablas en la base de datos
-        db.create_all() 
-        
-        # Lógica Opcional de Inserción Inicial (¡Solo si necesitas datos por defecto!)
-        # if Zona.query.count() == 0:
-        #     zona1 = Zona(nombre='Planta Baja')
-        #     db.session.add(zona1)
-        #     db.session.commit()
-        #     print("Zona inicial creada.")
-        
-        print("Base de datos inicializada y tablas creadas.")
+# --- Inicialización ---
 
 if __name__ == '__main__':
-    init_db() 
+    if not os.path.exists(UPLOAD_FOLDER):
+        os.makedirs(UPLOAD_FOLDER)
+        
+    with app.app_context():
+        db.create_all()
+        
+        admin = Usuario.query.filter_by(numero_acceso='9898').first()
+        if not admin:
+            admin_user = Usuario(
+                nombre_completo='ADMINISTRADOR',
+                numero_acceso='9898',
+                rol='admin'
+            )
+            db.session.add(admin_user)
+            db.session.commit()
+            
+    app.run(debug=True)
 
     app.run(debug=True, host='0.0.0.0')
+
