@@ -1,29 +1,35 @@
 # Archivo: initialize_db.py
-from app import app, db, init_db
+
+from app import app, db, Usuario, Zona 
 import os
 import sys
-
-# Script para inicializar las tablas de la base de datos en Render.
-# Solo llama a la función init_db() que contiene db.create_all().
 
 print("Iniciando la inicialización de la base de datos...")
 
 # Ejecuta la inicialización de la base de datos dentro del contexto de la aplicación
 with app.app_context():
-    # Esta línea crea las tablas en la Base de Datos (PostgreSQL en Render)
-    # y la carpeta 'uploads'
+    
+    # Crea las tablas en la Base de Datos
     db.create_all()
     
-    # OPCIONAL: Si deseas pre-cargar zonas por defecto (como las que tenías en SQLite)
-    # Aquí es donde podrías agregar la lógica para crear entradas iniciales (usuarios, zonas, etc.)
-    # Por ejemplo, para crear la zona "Oficina Principal" si no existe:
-    # from app import Zona # Asumiendo que Zona es tu modelo
-    # if not Zona.query.filter_by(nombre='Oficina Principal').first():
-    #     nueva_zona = Zona(nombre='Oficina Principal')
-    #     db.session.add(nueva_zona)
-    #     db.session.commit()
-    #     print("Zona 'Oficina Principal' creada.")
+    # Lógica: Crear el usuario administrador (9898) si no existe
+    # Esta lógica es la misma que ya tienes en app.py, pero la ejecutamos aquí para Render
+    if not Usuario.query.filter_by(numero_acceso='9898').first():
+        admin_user = Usuario(
+            nombre_completo='ADMINISTRADOR',
+            numero_acceso='9898',
+            rol='admin'
+        )
+        db.session.add(admin_user)
+        print("✅ Usuario Administrador inicial (9898) creado.")
+
+    # Lógica Opcional: Crear una zona inicial si no existe
+    if not Zona.query.filter_by(nombre='Oficina Central').first():
+        nueva_zona = Zona(nombre='Oficina Central')
+        db.session.add(nueva_zona)
+        print("✅ Zona 'Oficina Central' creada.")
     
-    print("✅ Base de datos inicializada y tablas creadas (incluyendo 'zona').")
+    db.session.commit()
+    print("✅ Base de datos inicializada y tablas creadas.")
 
 print("Finalizado.")
