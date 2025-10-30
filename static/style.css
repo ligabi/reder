@@ -1,163 +1,228 @@
-/* Paleta Industrial:
-   - Charcoal (Fondo Oscuro/Navbar): #212529
-   - Steel Gray (Primario/Tarjetas Oscuras): #495057
-   - Accent Blue (Acción/Botones): #00b0ff
-   - Light Gray (Fondo Claro/Body): #f8f9fa
+/* Paleta Industrial/Tecnológica (Dark Mode - Muted):
+   - Charcoal (Fondo Oscuro/Navbar): #1A1F25
+   - Main Background (Fondo General): #2C333A
+   - Steel (Texto Principal): #C8D1DB
+   - Muted Blue (Accento/Botones): #4299E1 
+   - Subtle Card BG: #232930
 */
 
 :root {
-    --color-charcoal: #212529;
-    --color-steel: #495057;
-    --color-accent: #00b0ff;
-    --color-light-gray: #f8f9fa;
-    --color-text-dark: #212529;
+    --color-charcoal: #1A1F25;
+    --color-steel: #C8D1DB; /* Usado como texto principal */
+    --color-accent: #4299E1; /* Azul Muted */
+    --color-light-gray: #2C333A; /* Fondo general */
+    --color-text-dark: #C8D1DB; /* Texto principal */
+    --color-border-light: #4A5568; /* Borde sutil oscuro */
+    --color-bg-subtle: #232930; /* Fondo para columnas Kanban y tarjetas */
 }
 
-/* Clases de Utilidad para Bootstrap */
+/* Base y Tipografía (Monospace para un toque 'Code') */
+body {
+    background-color: var(--color-light-gray);
+    /* Se requiere añadir la fuente 'Roboto Mono' en base.html */
+    font-family: 'Roboto Mono', monospace; 
+    color: var(--color-text-dark);
+}
+
+h1, h2, h3, h4, h5, h6 {
+    font-family: 'Oswald', sans-serif;
+    color: var(--color-steel);
+    text-transform: uppercase;
+}
+
+/* Navbar */
+.navbar-brand {
+    font-family: 'Oswald', sans-serif;
+}
 .bg-charcoal { background-color: var(--color-charcoal) !important; }
-.bg-steel { background-color: var(--color-steel) !important; }
+.bg-steel { background-color: var(--color-charcoal) !important; } 
 .text-accent { color: var(--color-accent) !important; }
+
+/* Formularios y Botones (Bordes cuadrados, más agresivos) */
+.form-control, .form-select {
+    border-radius: 0;
+    border: 1px solid var(--color-border-light);
+    background-color: var(--color-bg-subtle);
+    color: var(--color-steel);
+}
+.form-control:focus, .form-select:focus {
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 0.1rem rgba(66, 153, 225, 0.5); /* Sombra de luz sutil */
+    background-color: var(--color-bg-subtle);
+    color: var(--color-steel);
+}
+.btn {
+    border-radius: 0;
+    font-weight: 700;
+    text-transform: uppercase;
+}
 .btn-accent { 
     background-color: var(--color-accent); 
     border-color: var(--color-accent);
-    color: var(--color-charcoal);
-    border-radius: 0;
+    color: var(--color-charcoal); /* Texto oscuro sobre el acento */
 }
 .btn-accent:hover {
-    background-color: #008cd4; /* Un poco más oscuro al pasar el ratón */
-    border-color: #008cd4;
+    background-color: #3182CE; /* Azul más oscuro al pasar */
+    border-color: #3182CE;
     color: var(--color-charcoal);
 }
 .btn-outline-accent { 
-    color: var(--color-accent); 
+    color: var(--color-accent);
     border-color: var(--color-accent);
-    border-radius: 0;
 }
 .btn-outline-accent:hover {
     background-color: var(--color-accent);
     color: var(--color-charcoal);
 }
-.bg-light-gray {
-    background-color: var(--color-light-gray) !important;
+.btn-primary {
+    background-color: #555;
+    border-color: #666;
+    color: var(--color-steel);
+    border-radius: 0;
 }
 
-
-body {
-    /* Nuevo fondo claro */
-    background-color: var(--color-light-gray); 
-    /* Fuente seria y legible */
-    font-family: 'Roboto', sans-serif;
-    color: var(--color-text-dark); /* Color de texto más oscuro */
-}
-
-h1, h2, h3, h4, h5, h6 {
-    /* Títulos con fuente fuerte y mayúsculas */
-    font-family: 'Oswald', sans-serif;
-    text-transform: uppercase;
-    color: var(--color-steel) !important;
-}
-
-/* Centrar el formulario de login */
+/* Contenedor de Login */
 .login-container {
     max-width: 400px;
     margin-top: 10vh;
-    padding: 30px;
-    background-color: #ffffff;
-    /* Quitamos el redondeo para un look más serio/industrial */
+    padding: 40px;
+    background-color: var(--color-charcoal);
     border-radius: 0; 
-    /* Sombra fuerte pero simple */
-    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2); 
-    border: 1px solid var(--color-steel);
+    box-shadow: 0 0 15px rgba(66, 153, 225, 0.2); /* Sombra de luz sutil */
+    border: 1px solid var(--color-accent);
 }
 
-/* Formularios - Bordes marcados */
-.form-control, .form-select {
-    border-radius: 0;
-    border: 1px solid var(--color-steel);
+/* Tarjetas de Ticket y Kanban */
+.ticket-card, .kanban-card, .card {
+    border-radius: 0; 
+    box-shadow: none; 
 }
-.form-control:focus, .form-select:focus {
+.ticket-card, .kanban-card {
+    background-color: var(--color-bg-subtle);
+    border: 1px solid var(--color-border-light);
+    border-left: 4px solid; 
+    margin-bottom: 12px;
+    cursor: pointer; 
+    transition: all 0.2s;
+}
+.ticket-card:hover, .kanban-card:hover {
+    transform: translateY(-2px); 
+    box-shadow: 0 0 10px rgba(66, 153, 225, 0.2); 
     border-color: var(--color-accent);
-    box-shadow: 0 0 0 0.25rem rgba(0, 176, 255, 0.25); /* Sombra de foco azul */
-}
-
-/* Tarjetas */
-.card {
-    border-radius: 0; /* Bordes rectos */
-    border: 1px solid #ced4da;
-    box-shadow: none !important; /* Eliminamos sombras suaves */
 }
 .card-header {
-    /* Encabezados de tarjeta con color Steel Gray */
-    background-color: var(--color-steel) !important;
-    color: #ffffff !important;
-    font-family: 'Oswald', sans-serif;
+    border-radius: 0;
+    border-bottom: 1px solid var(--color-border-light);
+}
+.card-body {
+    background-color: var(--color-bg-subtle);
+}
+
+/* Estilos de Estado (Dark Mode + Muted Tech) */
+/* Abierto: Azul sutil (New/Priority) */
+.estado-Abierto {
+    border-color: #4299E1; 
+    background-color: rgba(66, 153, 225, 0.1); 
+    color: #4299E1; 
+}
+/* En Progreso: Amarillo/Naranja sutil (Work In Progress/Attention) */
+.estado-En-Progreso {
+    border-color: #ECC94B; 
+    background-color: rgba(236, 201, 75, 0.1);
+    color: #ECC94B;
+}
+/* Resuelto: Verde sutil (Done/Success) */
+.estado-Resuelto {
+    border-color: #48BB78; 
+    background-color: rgba(72, 187, 120, 0.1); 
+    color: #48BB78;
+}
+/* Rechazado: Rojo sutil (Blocked/Rejected/Error) */
+.estado-Rechazado {
+    border-color: #F56565; 
+    background-color: rgba(245, 101, 101, 0.1); 
+    color: #F56565;
+}
+
+/* Kanban Board Styling */
+.kanban-board {
+    display: flex;
+    gap: 15px;
+    overflow-x: auto; 
+    padding-bottom: 15px; 
+}
+
+.kanban-column {
+    min-width: 300px; 
+    max-width: 300px;
+    background-color: var(--color-charcoal); 
+    border-radius: 0;
+    padding: 10px;
+    height: fit-content;
+    border: 1px solid var(--color-border-light);
+}
+
+.kanban-header {
+    font-size: 1.1em;
+    font-weight: 700;
+    margin-bottom: 10px;
+    padding-bottom: 5px;
+    border-bottom: 2px solid var(--color-accent);
+    color: var(--color-accent);
+}
+
+.kanban-card .card-title {
+    font-size: 0.95em;
+    font-weight: 700;
+}
+.kanban-card .card-text {
+    font-size: 0.85em;
+    color: #A0AEC0; /* Gris más suave para texto secundario */
+}
+
+/* Diseño de dos columnas en ver_ticket (Detalles) */
+.ticket-details-card {
+    position: sticky; 
+    top: 20px;
+    border: 1px solid var(--color-accent); 
+}
+
+.comment-card {
+    border: 1px solid var(--color-border-light);
+    border-left: 3px solid var(--color-accent);
+    margin-bottom: 15px;
+    background-color: var(--color-bg-subtle);
+    border-radius: 0;
+}
+.comment-card p { color: var(--color-steel); }
+
+.text-muted {
+    color: #A0AEC0 !important;
+}
+.text-dark {
+    color: var(--color-steel) !important;
+}
+
+/* Alertas para el dark mode */
+.alert-info { background-color: var(--color-bg-subtle); border-color: #4299E1; color: #4299E1; }
+.alert-warning { background-color: var(--color-bg-subtle); border-color: #ECC94B; color: #ECC94B; }
+.alert-danger { background-color: var(--color-bg-subtle); border-color: #F56565; color: #F56565; }
+.alert-success { background-color: var(--color-bg-subtle); border-color: #48BB78; color: #48BB78; }
+
+.badge {
+    border-radius: 0;
     text-transform: uppercase;
 }
-.card .list-group-item {
-    border-radius: 0;
-}
 
-
-/* Estilo para tarjetas de ticket */
-.ticket-card {
-    transition: none; 
-    border: 1px solid #dee2e6;
-    border-left: 5px solid; /* Usaremos este borde para el estado */
-    border-radius: 0 !important; /* Aseguramos bordes rectos */
-}
-.ticket-card:hover {
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-    /* Fondo ligeramente oscuro al pasar el ratón */
-    background-color: var(--color-light-gray); 
-}
-
-/* Estilos para los estados de ticket más serios (colores industriales/subditos) */
-/* Abierto: Necesita atención (Gris claro con borde azul) */
-.estado-Abierto {
-    border-color: var(--color-accent); /* Azul de alerta */
-    background-color: rgba(0, 176, 255, 0.1); 
-    color: var(--color-steel); 
-}
-/* En Progreso: Trabajo en curso (Gris oscuro/Steel) */
-.estado-En-Progreso {
-    border-color: var(--color-steel); 
-    background-color: #e9ecef;
+/* Elementos de lista */
+.list-group-item {
+    background-color: var(--color-bg-subtle);
     color: var(--color-steel);
+    border-color: var(--color-border-light);
 }
-/* Resuelto: Éxito (Verde oscuro/sobrio) */
-.estado-Resuelto {
-    border-color: #1a7500; 
-    background-color: #e6ffe6; 
-    color: #1a7500;
+.list-group-item:hover {
+    background-color: #3A4550;
 }
-/* Rechazado: Problema/Error (Rojo sobrio) */
-.estado-Rechazado {
-    border-color: #b02a37; 
-    background-color: #fceceb; 
-    color: #b02a37;
-}
-
-/* Estilo para la foto del ticket */
-.ticket-photo-container {
-    max-width: 600px; /* Tamaño máximo para la foto */
-    margin: 15px 0;
-    border: 1px solid var(--color-steel); /* Borde de metal */
-    padding: 5px;
-    background-color: #ffffff;
-    border-radius: 0;
-}
-
-.ticket-photo {
-    max-width: 100%;
-    height: auto;
-    display: block;
-}
-
-/* Comentarios */
-.comentario-admin {
-    background-color: #e9ecef !important; /* Gris claro para Admin */
-    border-left: 5px solid var(--color-steel); /* Borde de steel */
-}
-.comentario-user {
-    border-left: 5px solid var(--color-accent); /* Borde de acción */
+.shadow-sm {
+    box-shadow: none !important;
 }
