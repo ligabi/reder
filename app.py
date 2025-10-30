@@ -8,13 +8,15 @@ from flask import (
     session, 
     abort, 
     g,
-    send_from_directory
+    send_from_directory,
+    flash
 )
 from flask_sqlalchemy import SQLAlchemy
 from functools import wraps
 from pathlib import Path
 from werkzeug.utils import secure_filename 
 from collections import defaultdict 
+from datetime import datetime # Importar datetime para el modelo Notificacion
 
 # --- Configuración de Archivos y Aplicación Flask ---
 
@@ -55,6 +57,7 @@ class Usuario(db.Model):
     nombre_completo = db.Column(db.String(100), nullable=True, default='Mantenimiento') 
     rol = db.Column(db.String(10), default='user')
     tickets = db.relationship('Ticket', backref='creador', lazy=True)
+    notificaciones = db.relationship('Notificacion', backref='receptor', lazy=True) # NUEVO: Relación a Notificaciones
 
 class Ticket(db.Model):
     __tablename__ = 'ticket'
@@ -80,18 +83,60 @@ class Comentario(db.Model):
     usuario_id = db.Column(db.String(20), nullable=False) 
     usuario_acceso = db.Column(db.String(4), nullable=False) 
 
-# --- Lógica de Autenticación y Carga de Usuario ---
+# --- NUEVO MODELO DE NOTIFICACIONES ---
+class Notificacion(db.Model):
+    __tablename__ = 'notificacion'
+    id = db.Column(db.Integer, primary_key=True)
+    # Receptor de la notificación (creador del ticket)
+    usuario_id = db.Column(db.Integer, db.ForeignKey('usuario.id'), nullable=False) 
+    ticket_id = db.Column(db.Integer, db.ForeignKey('ticket.id'), nullable=False)
+    
+    tipo = db.Column(db.String(50), nullable=False) # Ej: 'comentario', 'estado_cambiado', 'modificacion'
+    mensaje = db.Column(db.String(255), nullable=False)
+    leida = db.Column(db.Boolean, default=False)
+    fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow) 
+    
+    ticket = db.relationship('Ticket', backref='notificaciones')
+# -------------------------------------
+
+# --- Función auxiliar para crear notificaciones ---
+def crear_notificacion(usuario_id, ticket_id, tipo, mensaje):
+    """Crea y añade a la sesión una nueva notificación para el usuario."""
+    # Nota: el commit se hará en la función principal
+    try:
+        notificacion = Notificacion(
+            usuario_id=usuario_id, 
+            ticket_id=ticket_id, 
+            tipo=tipo, 
+            mensaje=mensaje
+        )
+        db.session.add(notificacion)
+    except Exception as e:
+        print(f"Error al crear notificación: {e}")
+# --------------------------------------------------
+
+# --- Lógica de Autenticación y Carga de Usuario (MODIFICADA) ---
 
 @app.before_request
 def load_logged_in_user():
     g.user_id = session.get('user_id')
     g.rol = session.get('rol')
     g.numero_acceso = session.get('numero_acceso')
+    g.notificaciones_sin_leer_count = 0 # Inicializar contador
+    
     if g.user_id and g.rol == 'user':
         try:
             user_db_id = int(g.user_id)
             usuario = Usuario.query.get(user_db_id)
             g.nombre_completo = usuario.nombre_completo if usuario else 'Usuario Desconocido'
+            
+            # --- NUEVA LÓGICA DE NOTIFICACIONES ---
+            g.notificaciones_sin_leer_count = Notificacion.query.filter_by(
+                usuario_id=user_db_id, 
+                leida=False
+            ).count()
+            # -------------------------------------
+            
         except (ValueError, TypeError):
             g.nombre_completo = 'Usuario Desconocido'
     elif g.rol == 'admin':
@@ -100,6 +145,7 @@ def load_logged_in_user():
         g.nombre_completo = None
 
 def login_required(f):
+# ... (Función sin cambios) ...
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if g.user_id is None:
@@ -108,6 +154,7 @@ def login_required(f):
     return decorated_function
 
 def admin_required(f):
+# ... (Función sin cambios) ...
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if g.rol != 'admin':
@@ -115,11 +162,12 @@ def admin_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-# --- Rutas de Autenticación y Navegación ---
+# --- Rutas de Autenticación y Navegación (Sin cambios) ---
 
 @app.route('/', methods=['GET', 'POST'])
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+# ... (Ruta sin cambios) ...
     if g.user_id:
         return redirect(url_for('panel_inicio'))
         
@@ -163,6 +211,7 @@ def logout():
 @app.route('/panel')
 @login_required
 def panel_inicio():
+# ... (Ruta sin cambios) ...
     if g.rol == 'admin':
         return redirect(url_for('panel_admin'))
     elif g.rol == 'user':
@@ -171,11 +220,12 @@ def panel_inicio():
     else:
         return redirect(url_for('logout'))
 
-# --- Rutas de Usuario ---
+# --- Rutas de Usuario (Sin cambios) ---
 
 @app.route('/mis_tickets')
 @login_required
 def panel_usuario():
+# ... (Ruta sin cambios) ...
     """Ruta principal del usuario: solo muestra el formulario de nuevo reporte."""
     if g.rol != 'user':
         return redirect(url_for('panel_admin')) 
@@ -189,6 +239,7 @@ def panel_usuario():
 @app.route('/tickets/gestion')
 @login_required
 def lista_tickets_usuario():
+# ... (Ruta sin cambios) ...
     """Nueva ruta para la pestaña de gestión y listado de tickets."""
     if g.rol != 'user':
         return redirect(url_for('panel_admin')) 
@@ -218,6 +269,7 @@ def lista_tickets_usuario():
 @app.route('/ticket/crear', methods=['POST'])
 @login_required
 def crear_ticket():
+# ... (Ruta sin cambios) ...
     if g.rol != 'user':
          return "Solo los usuarios (4 dígitos) pueden crear tickets.", 403
 
@@ -265,11 +317,12 @@ def crear_ticket():
     # Después de crear, redirige a la gestión de tickets
     return redirect(url_for('lista_tickets_usuario')) 
 
-# --- Rutas de Administrador ---
+# --- Rutas de Administrador (Sin cambios estructurales en panel) ---
 
 @app.route('/admin', methods=['GET'])
 @admin_required
 def panel_admin():
+# ... (Ruta sin cambios) ...
     """Ruta principal del admin: Muestra la gestión de tickets."""
     search_ref = request.args.get('search_ref', '').strip()
     
@@ -310,6 +363,7 @@ def panel_admin():
 @app.route('/admin/usuarios', methods=['GET'])
 @admin_required
 def gestion_usuarios_admin():
+# ... (Ruta sin cambios) ...
     """Nueva ruta para la pestaña de gestión de usuarios."""
     usuarios = Usuario.query.filter_by(rol='user').order_by(Usuario.numero_acceso).all() 
     return render_template('panel_admin.html', 
@@ -320,6 +374,7 @@ def gestion_usuarios_admin():
 @app.route('/admin/usuario/crear', methods=['POST'])
 @admin_required
 def crear_usuario():
+# ... (Ruta sin cambios) ...
     nombre_completo = request.form.get('nombre_completo', '').strip()
     numero_acceso = request.form.get('numero_acceso', '').strip()
     
@@ -339,6 +394,7 @@ def crear_usuario():
 @app.route('/admin/usuario/eliminar', methods=['POST'])
 @admin_required
 def eliminar_usuario():
+# ... (Ruta sin cambios) ...
     """Elimina un usuario y todos sus tickets y comentarios asociados."""
     user_id_a_eliminar = request.form.get('eliminar_usuario_id')
     
@@ -379,6 +435,7 @@ def eliminar_usuario():
 @app.route('/admin/zonas/view', methods=['GET'])
 @admin_required
 def gestion_zonas_admin():
+# ... (Ruta sin cambios) ...
     """Nueva ruta para la pestaña de gestión de zonas."""
     zonas = Zona.query.order_by(Zona.nombre).all()
     return render_template('panel_admin.html', 
@@ -389,6 +446,7 @@ def gestion_zonas_admin():
 @app.route('/admin/zonas', methods=['POST'])
 @admin_required
 def gestionar_zonas():
+# ... (Ruta sin cambios) ...
     nombre_zona = request.form.get('nombre_zona', '').strip()
     if nombre_zona:
         if not Zona.query.filter_by(nombre=nombre_zona).first():
@@ -415,6 +473,7 @@ def gestionar_zonas():
 @app.route('/ticket/<int:ticket_id>')
 @login_required
 def ver_ticket(ticket_id):
+# ... (Ruta sin cambios estructurales) ...
     ticket = Ticket.query.get_or_404(ticket_id)
     
     puede_ver = False
@@ -422,6 +481,15 @@ def ver_ticket(ticket_id):
         puede_ver = True
     elif g.rol == 'user' and str(ticket.creador_id) == g.user_id:
         puede_ver = True
+        
+        # Lógica para marcar notificaciones como leídas cuando el usuario ve el ticket
+        Notificacion.query.filter_by(
+            usuario_id=int(g.user_id), 
+            ticket_id=ticket.id,
+            leida=False
+        ).update({'leida': True}, synchronize_session=False)
+        db.session.commit()
+        # g.notificaciones_sin_leer_count se actualizará en el siguiente request.
     
     if not puede_ver:
         abort(403)
@@ -461,7 +529,8 @@ def comentar_ticket(ticket_id):
     texto = request.form.get('texto', '').strip()
     
     if not texto:
-        return "El comentario no puede estar vacío.", 400
+        flash('El comentario no puede estar vacío.', 'warning')
+        return redirect(url_for('ver_ticket', ticket_id=ticket_id))
 
     if g.rol == 'user' and str(ticket.creador_id) != g.user_id: 
         abort(403) 
@@ -473,7 +542,23 @@ def comentar_ticket(ticket_id):
         usuario_acceso=g.numero_acceso
     )
     db.session.add(nuevo_comentario)
+    
+    # --- Lógica de Notificación por Comentario de Admin ---
+    if g.rol == 'admin':
+        try:
+            creador_id_int = int(ticket.creador_id)
+            crear_notificacion(
+                usuario_id=creador_id_int,
+                ticket_id=ticket.id,
+                tipo='comentario',
+                mensaje=f"El administrador ha añadido un comentario en su ticket #{ticket.reference_number}."
+            )
+        except ValueError:
+            print("Error: El ID del creador no es un entero.")
+    # ----------------------------------------------------
+    
     db.session.commit()
+    flash('Comentario añadido correctamente.', 'success')
     return redirect(url_for('ver_ticket', ticket_id=ticket_id))
 
 @app.route('/ticket/<int:ticket_id>/estado', methods=['POST'])
@@ -485,8 +570,11 @@ def cambiar_estado(ticket_id):
     
     estados_validos = ['Abierto', 'En Progreso', 'Resuelto', 'Rechazado']
     if nuevo_estado not in estados_validos:
-        return "Estado inválido.", 400
+        flash('Estado inválido.', 'danger')
+        return redirect(url_for('ver_ticket', ticket_id=ticket_id))
 
+    estado_anterior = ticket.estado
+    
     ticket.estado = nuevo_estado
     
     if nuevo_estado == 'Rechazado' and motivo_rechazo:
@@ -494,7 +582,22 @@ def cambiar_estado(ticket_id):
     elif nuevo_estado != 'Rechazado':
         ticket.motivo_rechazo = None
 
+    # --- Lógica de Notificación por Cambio de Estado ---
+    if nuevo_estado != estado_anterior:
+        try:
+            creador_id_int = int(ticket.creador_id)
+            crear_notificacion(
+                usuario_id=creador_id_int, 
+                ticket_id=ticket.id, 
+                tipo='estado_cambiado', 
+                mensaje=f"El estado de su ticket #{ticket.reference_number} ha cambiado a: {nuevo_estado.upper()}"
+            )
+        except ValueError:
+            print("Error: El ID del creador no es un entero.")
+    # --------------------------------------------------
+
     db.session.commit()
+    flash(f"Estado actualizado a {nuevo_estado.upper()}.", 'success')
     return redirect(url_for('ver_ticket', ticket_id=ticket_id))
 
 @app.route('/ticket/<int:ticket_id>/editar/admin', methods=['POST'])
@@ -502,6 +605,11 @@ def cambiar_estado(ticket_id):
 def editar_ticket_admin(ticket_id):
     ticket = Ticket.query.get_or_404(ticket_id)
     
+    titulo_anterior = ticket.titulo
+    descripcion_anterior = ticket.descripcion
+    zona_id_anterior = ticket.zona_id
+    reference_number_anterior = ticket.reference_number
+
     ticket.titulo = request.form.get('titulo', ticket.titulo)
     ticket.descripcion = request.form.get('descripcion', ticket.descripcion)
     reference_number = request.form.get('reference_number', '').strip()
@@ -513,12 +621,35 @@ def editar_ticket_admin(ticket_id):
     if reference_number and len(reference_number) == 4:
          ticket.reference_number = reference_number
 
+    # --- Lógica de Notificación por Modificación de Datos ---
+    ha_habido_cambio = (
+        ticket.titulo != titulo_anterior or
+        ticket.descripcion != descripcion_anterior or
+        ticket.zona_id != zona_id_anterior or
+        ticket.reference_number != reference_number_anterior
+    )
+    
+    if ha_habido_cambio:
+        try:
+            creador_id_int = int(ticket.creador_id)
+            crear_notificacion(
+                usuario_id=creador_id_int, 
+                ticket_id=ticket.id, 
+                tipo='modificacion', 
+                mensaje=f"El administrador ha actualizado la información básica de su ticket #{ticket.reference_number}."
+            )
+        except ValueError:
+            print("Error: El ID del creador no es un entero.")
+    # --------------------------------------------------------
+
     db.session.commit()
+    flash('Datos del ticket actualizados por el administrador.', 'success')
     return redirect(url_for('ver_ticket', ticket_id=ticket_id))
 
 @app.route('/ticket/<int:ticket_id>/acusar_cierre', methods=['POST'])
 @login_required
 def acusar_cierre(ticket_id):
+# ... (Ruta sin cambios) ...
     ticket = Ticket.query.get_or_404(ticket_id)
     
     if g.rol != 'user' or str(ticket.creador_id) != g.user_id:
@@ -527,24 +658,26 @@ def acusar_cierre(ticket_id):
     if ticket.estado in ['Resuelto', 'Rechazado'] and not ticket.acusado_por_usuario:
         ticket.acusado_por_usuario = True
         db.session.commit()
+        flash('Ticket archivado correctamente.', 'success')
         
     return redirect(url_for('ver_ticket', ticket_id=ticket_id))
 
 
-# --- Rutas de Archivos ---
+# --- Rutas de Archivos (Sin cambios) ---
 
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
-# --- Inicialización ---
+# --- Inicialización (Modificado) ---
 
 if __name__ == '__main__':
     if not os.path.exists(UPLOAD_FOLDER):
         os.makedirs(UPLOAD_FOLDER)
         
     with app.app_context():
-        db.create_all()
+        # Se recreará la base de datos o se añadirán las tablas faltantes si no existe
+        db.create_all() 
         
         admin = Usuario.query.filter_by(numero_acceso='9898').first()
         if not admin:
@@ -557,5 +690,3 @@ if __name__ == '__main__':
             db.session.commit()
             
     app.run(debug=True)
-
-
