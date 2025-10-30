@@ -317,6 +317,65 @@ def gestion_usuarios_admin():
                            active_tab='usuarios') # Pestaña activa 'usuarios'
 
 
+@app.route('/admin/usuario/crear', methods=['POST'])
+@admin_required
+def crear_usuario():
+    nombre_completo = request.form.get('nombre_completo', '').strip()
+    numero_acceso = request.form.get('numero_acceso', '').strip()
+    
+    if len(numero_acceso) != 4 or not numero_acceso.isdigit():
+        return "El código de acceso debe ser de 4 dígitos.", 400
+
+    if Usuario.query.filter_by(numero_acceso=numero_acceso).first():
+        return "Ya existe un usuario con ese código de acceso.", 400
+        
+    nuevo_usuario = Usuario(nombre_completo=nombre_completo, numero_acceso=numero_acceso, rol='user')
+    db.session.add(nuevo_usuario)
+    db.session.commit()
+    # Redirigir a la nueva pestaña de Usuarios
+    return redirect(url_for('gestion_usuarios_admin'))
+
+
+@app.route('/admin/usuario/eliminar', methods=['POST'])
+@admin_required
+def eliminar_usuario():
+    """Elimina un usuario y todos sus tickets y comentarios asociados."""
+    user_id_a_eliminar = request.form.get('eliminar_usuario_id')
+    
+    if user_id_a_eliminar and user_id_a_eliminar.isdigit():
+        user_id_int = int(user_id_a_eliminar)
+        usuario = Usuario.query.get(user_id_int)
+        
+        if usuario:
+            # 1. Prevenir la eliminación de la cuenta de administrador por seguridad
+            if usuario.rol == 'admin':
+                # Mensaje simple de depuración, redirigir sin eliminar
+                print("Intento de eliminar administrador bloqueado.") 
+                return redirect(url_for('gestion_usuarios_admin'))
+            
+            # 2. ELIMINAR DATOS ASOCIADOS PARA PRESERVAR LA INTEGRIDAD REFERENCIAL
+            # Se requiere eliminar manualmente los Comentarios y Tickets creados por el usuario.
+
+            # Eliminar todos los Comentarios asociados a los Tickets creados por este usuario
+            tickets_del_usuario = Ticket.query.filter_by(creador_id=user_id_int).all()
+            for ticket in tickets_del_usuario:
+                 # El delete con synchronize_session=False es más eficiente para eliminaciones masivas
+                 Comentario.query.filter_by(ticket_id=ticket.id).delete(synchronize_session=False)
+
+            # Eliminar todos los Comentarios hechos *por* el usuario (en cualquier ticket)
+            Comentario.query.filter_by(usuario_id=str(user_id_int)).delete(synchronize_session=False)
+
+            # 3. ELIMINAR TICKETS CREADOS POR EL USUARIO
+            Ticket.query.filter_by(creador_id=user_id_int).delete(synchronize_session=False)
+            
+            # 4. ELIMINAR USUARIO
+            db.session.delete(usuario)
+            db.session.commit()
+            
+    # Redirigir a la pestaña de Usuarios
+    return redirect(url_for('gestion_usuarios_admin'))
+
+
 @app.route('/admin/zonas/view', methods=['GET'])
 @admin_required
 def gestion_zonas_admin():
@@ -350,24 +409,6 @@ def gestionar_zonas():
         return redirect(url_for('gestion_zonas_admin'))
         
     return redirect(url_for('gestion_zonas_admin'))
-
-@app.route('/admin/usuario/crear', methods=['POST'])
-@admin_required
-def crear_usuario():
-    nombre_completo = request.form.get('nombre_completo', '').strip()
-    numero_acceso = request.form.get('numero_acceso', '').strip()
-    
-    if len(numero_acceso) != 4 or not numero_acceso.isdigit():
-        return "El código de acceso debe ser de 4 dígitos.", 400
-
-    if Usuario.query.filter_by(numero_acceso=numero_acceso).first():
-        return "Ya existe un usuario con ese código de acceso.", 400
-        
-    nuevo_usuario = Usuario(nombre_completo=nombre_completo, numero_acceso=numero_acceso, rol='user')
-    db.session.add(nuevo_usuario)
-    db.session.commit()
-    # Redirigir a la nueva pestaña de Usuarios
-    return redirect(url_for('gestion_usuarios_admin'))
 
 # --- Rutas de Tickets (Compartidas) ---
 
@@ -517,5 +558,4 @@ if __name__ == '__main__':
             
     app.run(debug=True)
 
-    app.run(debug=True, host='0.0.0.0')
 
