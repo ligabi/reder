@@ -1,7 +1,6 @@
-# initialize_db.py
+# Archivo: initialize_db.py
+# Este script se ejecuta SÓLO en el Build Command de Render.
 
-# Asegúrate de que las clases 'Usuario' y 'Zona' están disponibles aquí
-# si no están definidas en app.py, ajústalo.
 from app import app, db, Usuario, Zona 
 import os
 import sys
@@ -12,9 +11,7 @@ print("Iniciando la inicialización de la base de datos...")
 with app.app_context():
     
     # Crea las tablas en la Base de Datos
-    # Esto creará las tablas en tu base de datos Render Postgres.
     db.create_all()
-    print("✅ Tablas de la base de datos creadas/verificadas.")
     
     # Lógica: Crear el usuario administrador (9898) si no existe
     if not Usuario.query.filter_by(numero_acceso='9898').first():
@@ -24,7 +21,7 @@ with app.app_context():
             rol='admin'
         )
         db.session.add(admin_user)
-        print("✅ Usuario Administrador inicial (9898) creado. Acceso: 9898")
+        print("✅ Usuario Administrador inicial (9898) creado.")
 
     # Lógica Opcional: Crear una zona inicial si no existe
     if not Zona.query.filter_by(nombre='Oficina Central').first():
@@ -33,6 +30,6 @@ with app.app_context():
         print("✅ Zona 'Oficina Central' creada.")
     
     db.session.commit()
-    print("✅ Base de datos inicializada y cambios confirmados.")
+    print("✅ Base de datos inicializada y tablas creadas.")
 
 print("Finalizado.")
