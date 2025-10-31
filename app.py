@@ -17,39 +17,28 @@ from pathlib import Path
 from werkzeug.utils import secure_filename 
 from collections import defaultdict 
 from datetime import datetime
-from urllib.parse import urlparse # <-- Necesario para la conexión a PostgreSQL
+from urllib.parse import urlparse 
 
 # --- Configuración de Archivos y Aplicación Flask ---
 
 PROJECT_ROOT = Path(__file__).parent
 app = Flask(__name__, instance_path=str(PROJECT_ROOT / 'instance')) 
 
-# --- CORRECCIÓN 1: Lógica de Carpeta de Subidas Persistente (Render Disks) ---
-# Usa la variable de entorno 'UPLOAD_DIR' (que debes configurar en Render como /var/data/uploads)
-# Si no existe (ej. en desarrollo local), usa 'uploads'.
-UPLOAD_FOLDER = os.environ.get('UPLOAD_DIR', os.path.join(PROJECT_ROOT, 'uploads'))
-
-# CRÍTICO: Asegura que la carpeta exista antes de que Gunicorn intente acceder a ella.
-if not os.path.exists(UPLOAD_FOLDER):
-    print(f"Creando la carpeta de subida: {UPLOAD_FOLDER}")
-    # Nota: os.makedirs(..., exist_ok=True) evita errores si ya existe (en caso de disco persistente).
-    os.makedirs(UPLOAD_FOLDER, exist_ok=True) 
-# -------------------------------------------------------------------------
-
+# --- CAMBIO CRÍTICO: CONFIGURACIÓN DE ARCHIVOS PARA RENDER FREE TIER ---
+# En el plan gratuito de Render, el sistema de archivos local es efímero y no permite 
+# guardar archivos de forma persistente. La solución es deshabilitar la subida local.
+UPLOAD_FOLDER = 'DISABLED_FILE_STORAGE' 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER # Se mantiene para la ruta, pero no se usa para guardar.
+# --------------------------------------------------------------------------
 
-# --- CORRECCIÓN 2: Lógica de Base de Datos Persistente (PostgreSQL) ---
+# --- Lógica de Base de Datos (PostgreSQL) ---
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'una_clave_secreta_fuerte_y_larga_por_defecto_NO_USAR_EN_PRODUCCION')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# Obtener la URL de la DB de las variables de entorno de Render
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
 if DATABASE_URL:
-    # Estamos en Render (Producción) - Se conecta a PostgreSQL
-    
-    # Render usa 'postgres://' pero SQLAlchemy/psycopg2 prefiere 'postgresql://'
     url = urlparse(DATABASE_URL)
     if url.scheme == 'postgres':
         fixed_url = url._replace(scheme='postgresql').geturl()
@@ -60,10 +49,8 @@ if DATABASE_URL:
     print("Usando base de datos PostgreSQL (Render).")
     
 else:
-    # Estamos en Local (Desarrollo) - Usa SQLite
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///tickets.db'
     print("Usando base de datos SQLite (Local).")
-# ---------------------------------------------------------------------
 
 db = SQLAlchemy(app)
 
@@ -74,7 +61,7 @@ def allowed_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-# --- Modelos de la Base de Datos (SQLAlchemy) ---
+# --- Modelos de la Base de Datos (Sin cambios) ---
 
 class Zona(db.Model):
     __tablename__ = 'zona'
@@ -127,9 +114,7 @@ class Notificacion(db.Model):
     
     ticket = db.relationship('Ticket', backref='notificaciones')
 
-# --- Función auxiliar para crear notificaciones ---
 def crear_notificacion(usuario_id, ticket_id, tipo, mensaje):
-    """Crea y añade a la sesión una nueva notificación para el usuario."""
     try:
         notificacion = Notificacion(
             usuario_id=usuario_id, 
@@ -140,10 +125,8 @@ def crear_notificacion(usuario_id, ticket_id, tipo, mensaje):
         db.session.add(notificacion)
     except Exception as e:
         print(f"Error al crear notificación: {e}")
-# --------------------------------------------------
 
-# --- Lógica de Autenticación y Carga de Usuario ---
-
+# --- Rutas y Lógica de Autenticación (Sin cambios) ---
 @app.before_request
 def load_logged_in_user():
     g.user_id = session.get('user_id')
@@ -185,8 +168,6 @@ def admin_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-# --- Rutas de Autenticación y Navegación ---
-
 @app.route('/', methods=['GET', 'POST'])
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -200,7 +181,6 @@ def login():
         if not nombre or not codigo:
             return render_template('login.html', error="El nombre de usuario y el código de acceso no pueden estar vacíos.")
 
-        # Lógica para Administrador (9898)
         if codigo == '9898':
             if nombre.upper() != 'ADMINISTRADOR':
                  return render_template('login.html', error="Nombre de usuario y/o código de acceso inválido.")
@@ -210,7 +190,6 @@ def login():
             session['numero_acceso'] = '9898'
             return redirect(url_for('panel_admin'))
         
-        # Lógica para Usuario (4 dígitos)
         elif len(codigo) == 4 and codigo.isdigit():
             usuario = Usuario.query.filter_by(numero_acceso=codigo, nombre_completo=nombre).first()
             if usuario:
@@ -239,8 +218,6 @@ def panel_inicio():
         return redirect(url_for('panel_usuario')) 
     else:
         return redirect(url_for('logout'))
-
-# --- Rutas de Usuario ---
 
 @app.route('/mis_tickets')
 @login_required
@@ -300,15 +277,10 @@ def crear_ticket():
     if 'photo' in request.files:
         file = request.files['photo']
         if file.filename != '' and allowed_file(file.filename):
-            if not os.path.exists(app.config['UPLOAD_FOLDER']):
-                os.makedirs(app.config['UPLOAD_FOLDER'])
-                
-            filename = secure_filename(file.filename)
-            import time
-            unique_filename = f"{int(time.time())}_{filename}" 
-            file_path = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
-            file.save(file_path)
-            photo_path = unique_filename 
+            # --- CAMBIO CLAVE: IGNORAR ARCHIVO DE FOTO EN RENDER FREE TIER ---
+            print("ADVERTENCIA: Archivo de foto ignorado. Render Free Tier no permite guardar archivos localmente.")
+            photo_path = None # Garantizamos que no se registra una ruta local.
+            # --------------------------------------------------------------------
 
     zona_to_save = int(zona_id) if zona_id and zona_id.isdigit() and int(zona_id) != 0 else None
     
@@ -317,7 +289,7 @@ def crear_ticket():
         descripcion=descripcion, 
         creador_id=creador_id_int, 
         estado='Abierto', 
-        photo_path=photo_path, 
+        photo_path=photo_path, # photo_path es None
         zona_id=zona_to_save
     )
     db.session.add(nuevo_ticket)
@@ -327,7 +299,7 @@ def crear_ticket():
     
     return redirect(url_for('lista_tickets_usuario')) 
 
-# --- Rutas de Administrador ---
+# --- Rutas de Administrador y Tickets (Sin cambios) ---
 
 @app.route('/admin', methods=['GET'])
 @admin_required
@@ -366,7 +338,6 @@ def panel_admin():
                            tickets=all_tickets, 
                            active_tab='tickets') 
 
-
 @app.route('/admin/usuarios', methods=['GET'])
 @admin_required
 def gestion_usuarios_admin():
@@ -374,7 +345,6 @@ def gestion_usuarios_admin():
     return render_template('panel_admin.html', 
                            usuarios=usuarios,
                            active_tab='usuarios')
-
 
 @app.route('/admin/usuario/crear', methods=['POST'])
 @admin_required
@@ -408,7 +378,6 @@ def eliminar_usuario():
                 print("Intento de eliminar administrador bloqueado.") 
                 return redirect(url_for('gestion_usuarios_admin'))
             
-            # ELIMINAR DATOS ASOCIADOS
             tickets_del_usuario = Ticket.query.filter_by(creador_id=user_id_int).all()
             for ticket in tickets_del_usuario:
                  Comentario.query.filter_by(ticket_id=ticket.id).delete(synchronize_session=False)
@@ -455,8 +424,6 @@ def gestionar_zonas():
         return redirect(url_for('gestion_zonas_admin'))
         
     return redirect(url_for('gestion_zonas_admin'))
-
-# --- Rutas de Tickets (Compartidas) ---
 
 @app.route('/ticket/<int:ticket_id>')
 @login_required
@@ -641,26 +608,20 @@ def acusar_cierre(ticket_id):
     return redirect(url_for('ver_ticket', ticket_id=ticket_id))
 
 
-# --- Rutas de Archivos ---
+# --- Rutas de Archivos (Modificado para 404 seguro) ---
 
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
-    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+    # Ya que no se guardan archivos, si se intenta acceder a esta ruta, retornamos 404
+    abort(404) 
 
 # --- Inicialización ---
 
-# Función para inicializar la DB (crear tablas y admin)
-# Esta función es llamada por initialize_db.py en el Build Command
 def init_db():
     with app.app_context():
-        # db.create_all() está en initialize_db.py. 
-        # Si usas esta función aquí, asegúrate de que esté dentro de un 'try/except'
-        # para evitar fallos si la base de datos ya está creada y solo se ejecuta
-        # por initialize_db.py.
-        pass # La lógica de create_all y el admin se movió a initialize_db.py
+        pass 
 
 if __name__ == '__main__':
-    # Esto es solo para ejecución local, Render no lo usa
     with app.app_context():
         db.create_all()
             
