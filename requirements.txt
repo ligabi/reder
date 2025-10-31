@@ -1,6 +1,5 @@
 Flask
 Flask-SQLAlchemy
 gunicorn
-psycopg2-binary  # Driver de PostgreSQL para Python
-werkzeug
-python-dotenv # Útil para desarrollo local
+psycopg2-binary  # <-- IMPORTANTE: Driver para PostgreSQL
+Werkzeug
