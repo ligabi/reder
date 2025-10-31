@@ -10,7 +10,8 @@ print("Iniciando la inicialización de la base de datos...")
 # Ejecuta la inicialización de la base de datos dentro del contexto de la aplicación
 with app.app_context():
     
-    # Crea las tablas en la Base de Datos
+    # Crea las tablas en la Base de Datos.
+    # Esto es CRÍTICO para crear las nuevas columnas (motivo_rechazo, acusado_por_usuario)
     db.create_all()
     
     # Lógica: Crear el usuario administrador (9898) si no existe
