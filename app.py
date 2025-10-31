@@ -25,10 +25,17 @@ PROJECT_ROOT = Path(__file__).parent
 app = Flask(__name__, instance_path=str(PROJECT_ROOT / 'instance')) 
 
 # --- CORRECCIÓN 1: Lógica de Carpeta de Subidas Persistente (Render Disks) ---
-# Se usará la variable de entorno 'UPLOAD_DIR' (que definirás en Render)
-# Si no existe, usará la carpeta local 'uploads' (para desarrollo)
+# Se usará la variable de entorno 'UPLOAD_DIR'
 UPLOAD_FOLDER = os.environ.get('UPLOAD_DIR', os.path.join(PROJECT_ROOT, 'uploads'))
 # -------------------------------------------------------------------------
+
+if not os.path.exists(UPLOAD_FOLDER):
+    print(f"Creando la carpeta de subida: {UPLOAD_FOLDER}")
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True) # <-- AÑADE ESTO
+    
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+# ...
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
@@ -697,5 +704,6 @@ if __name__ == '__main__':
     init_db()
             
     app.run(debug=True, host='0.0.0.0', port=5000)
+
 
 
