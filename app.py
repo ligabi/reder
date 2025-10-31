@@ -60,6 +60,7 @@ db = SQLAlchemy(app)
 # -----------------------------------------------------------------------
 
 # --- Funciones Auxiliares de Archivos ---
+# (Resto de funciones sin cambios)
 
 def allowed_file(filename):
     """Verifica si la extensión del archivo está permitida."""
@@ -111,7 +112,6 @@ class Comentario(db.Model):
     usuario_id = db.Column(db.String(20), nullable=False) 
     usuario_acceso = db.Column(db.String(4), nullable=False) 
 
-# --- NUEVO MODELO DE NOTIFICACIONES ---
 class Notificacion(db.Model):
     __tablename__ = 'notificacion'
     id = db.Column(db.Integer, primary_key=True)
@@ -123,7 +123,6 @@ class Notificacion(db.Model):
     fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow) 
     
     ticket = db.relationship('Ticket', backref='notificaciones')
-# -------------------------------------
 
 # --- Función auxiliar para crear notificaciones ---
 def crear_notificacion(usuario_id, ticket_id, tipo, mensaje):
@@ -137,13 +136,14 @@ def crear_notificacion(usuario_id, ticket_id, tipo, mensaje):
         )
         db.session.add(notificacion)
     except Exception as e:
-        # Se ha corregido la fecha_creacion en el modelo Ticket y Comentario para usar datetime.utcnow
         print(f"Error al crear notificación: {e}")
 # --------------------------------------------------
 
-# --- Lógica de Autenticación y Carga de Usuario ---
+# --- Lógica de Autenticación, Rutas, etc. ---
+# (El resto de tu código sigue siendo válido)
 
 @app.before_request
+# ... (load_logged_in_user, login_required, admin_required, rutas) ...
 def load_logged_in_user():
     g.user_id = session.get('user_id')
     g.rol = session.get('rol')
@@ -184,8 +184,6 @@ def admin_required(f):
             abort(403) 
         return f(*args, **kwargs)
     return decorated_function
-
-# --- Rutas de Autenticación y Navegación (Resto de código sin cambios lógicos) ---
 
 @app.route('/', methods=['GET', 'POST'])
 @app.route('/login', methods=['GET', 'POST'])
@@ -240,12 +238,9 @@ def panel_inicio():
     else:
         return redirect(url_for('logout'))
 
-# --- Rutas de Usuario ---
-
 @app.route('/mis_tickets')
 @login_required
 def panel_usuario():
-    """Ruta principal del usuario: solo muestra el formulario de nuevo reporte."""
     if g.rol != 'user':
         return redirect(url_for('panel_admin')) 
 
@@ -257,7 +252,6 @@ def panel_usuario():
 @app.route('/tickets/gestion')
 @login_required
 def lista_tickets_usuario():
-    """Nueva ruta para la pestaña de gestión y listado de tickets."""
     if g.rol != 'user':
         return redirect(url_for('panel_admin')) 
 
@@ -329,12 +323,9 @@ def crear_ticket():
     
     return redirect(url_for('lista_tickets_usuario')) 
 
-# --- Rutas de Administrador ---
-
 @app.route('/admin', methods=['GET'])
 @admin_required
 def panel_admin():
-    """Ruta principal del admin: Muestra la gestión de tickets."""
     search_ref = request.args.get('search_ref', '').strip()
     
     query = Ticket.query.join(Usuario, Ticket.creador_id == Usuario.id, isouter=True)\
@@ -373,7 +364,6 @@ def panel_admin():
 @app.route('/admin/usuarios', methods=['GET'])
 @admin_required
 def gestion_usuarios_admin():
-    """Nueva ruta para la pestaña de gestión de usuarios."""
     usuarios = Usuario.query.filter_by(rol='user').order_by(Usuario.numero_acceso).all() 
     return render_template('panel_admin.html', 
                            usuarios=usuarios,
@@ -401,7 +391,6 @@ def crear_usuario():
 @app.route('/admin/usuario/eliminar', methods=['POST'])
 @admin_required
 def eliminar_usuario():
-    """Elimina un usuario y todos sus tickets y comentarios asociados."""
     user_id_a_eliminar = request.form.get('eliminar_usuario_id')
     
     if user_id_a_eliminar and user_id_a_eliminar.isdigit():
@@ -413,13 +402,12 @@ def eliminar_usuario():
                 print("Intento de eliminar administrador bloqueado.") 
                 return redirect(url_for('gestion_usuarios_admin'))
             
-            # ELIMINAR DATOS ASOCIADOS
             tickets_del_usuario = Ticket.query.filter_by(creador_id=user_id_int).all()
             for ticket in tickets_del_usuario:
                  Comentario.query.filter_by(ticket_id=ticket.id).delete(synchronize_session=False)
 
             Comentario.query.filter_by(usuario_id=str(user_id_int)).delete(synchronize_session=False)
-            Notificacion.query.filter_by(usuario_id=user_id_int).delete(synchronize_session=False) # NUEVO: Eliminar notificaciones
+            Notificacion.query.filter_by(usuario_id=user_id_int).delete(synchronize_session=False) 
             Ticket.query.filter_by(creador_id=user_id_int).delete(synchronize_session=False)
             
             db.session.delete(usuario)
@@ -431,7 +419,6 @@ def eliminar_usuario():
 @app.route('/admin/zonas/view', methods=['GET'])
 @admin_required
 def gestion_zonas_admin():
-    """Nueva ruta para la pestaña de gestión de zonas."""
     zonas = Zona.query.order_by(Zona.nombre).all()
     return render_template('panel_admin.html', 
                            zonas=zonas,
@@ -459,8 +446,6 @@ def gestionar_zonas():
         return redirect(url_for('gestion_zonas_admin'))
         
     return redirect(url_for('gestion_zonas_admin'))
-
-# --- Rutas de Tickets (Compartidas) ---
 
 @app.route('/ticket/<int:ticket_id>')
 @login_required
@@ -532,7 +517,6 @@ def comentar_ticket(ticket_id):
     )
     db.session.add(nuevo_comentario)
     
-    # Lógica de Notificación por Comentario de Admin
     if g.rol == 'admin':
         try:
             creador_id_int = int(ticket.creador_id)
@@ -570,7 +554,6 @@ def cambiar_estado(ticket_id):
     elif nuevo_estado != 'Rechazado':
         ticket.motivo_rechazo = None
 
-    # Lógica de Notificación por Cambio de Estado
     if nuevo_estado != estado_anterior:
         try:
             creador_id_int = int(ticket.creador_id)
@@ -608,7 +591,6 @@ def editar_ticket_admin(ticket_id):
     if reference_number and len(reference_number) == 4:
          ticket.reference_number = reference_number
 
-    # Lógica de Notificación por Modificación de Datos
     ha_habido_cambio = (
         ticket.titulo != titulo_anterior or
         ticket.descripcion != descripcion_anterior or
@@ -648,15 +630,12 @@ def acusar_cierre(ticket_id):
     return redirect(url_for('ver_ticket', ticket_id=ticket_id))
 
 
-# --- Rutas de Archivos ---
-
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
-# --- Inicialización (Modificado para usar PostgreSQL/UTC) ---
+# --- Función para inicializar la base de datos (usada por initialize_db.py) ---
 
-# Función para iniciar la base de datos
 def init_db():
     with app.app_context():
         # Crea las tablas si no existen. Funciona tanto para SQLite como para PostgreSQL.
@@ -673,7 +652,7 @@ def init_db():
             db.session.add(admin_user)
             db.session.commit()
 
-# Es mejor usar un entrypoint para Render como `gunicorn app:app` o correr con host='0.0.0.0'
+# Es mejor usar un entrypoint para Render como `gunicorn app:app`
 if __name__ == '__main__':
     if not os.path.exists(UPLOAD_FOLDER):
         os.makedirs(UPLOAD_FOLDER)
@@ -681,6 +660,5 @@ if __name__ == '__main__':
     # Inicializa la DB al arrancar localmente
     init_db()
     
-    # Para Render, usa un proceso Gunicorn o similar. Localmente, puedes usar:
     app.run(debug=True)
 
