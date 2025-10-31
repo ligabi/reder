@@ -17,7 +17,7 @@ from pathlib import Path
 from werkzeug.utils import secure_filename 
 from collections import defaultdict 
 from datetime import datetime
-from urllib.parse import urlparse # <-- IMPORTANTE: Necesario para la DB
+from urllib.parse import urlparse # <-- Necesario para la conexión a PostgreSQL
 
 # --- Configuración de Archivos y Aplicación Flask ---
 
@@ -25,13 +25,14 @@ PROJECT_ROOT = Path(__file__).parent
 app = Flask(__name__, instance_path=str(PROJECT_ROOT / 'instance')) 
 
 # --- CORRECCIÓN 1: Lógica de Carpeta de Subidas Persistente (Render Disks) ---
-# Se usará la variable de entorno 'UPLOAD_DIR' (que definiste en Render)
-# Si no existe, usará la carpeta local 'uploads' (para desarrollo)
+# Usa la variable de entorno 'UPLOAD_DIR' (que debes configurar en Render como /var/data/uploads)
+# Si no existe (ej. en desarrollo local), usa 'uploads'.
 UPLOAD_FOLDER = os.environ.get('UPLOAD_DIR', os.path.join(PROJECT_ROOT, 'uploads'))
 
-# Asegura que la carpeta exista, esencial para que Gunicorn arranque sin error en Render
+# CRÍTICO: Asegura que la carpeta exista antes de que Gunicorn intente acceder a ella.
 if not os.path.exists(UPLOAD_FOLDER):
     print(f"Creando la carpeta de subida: {UPLOAD_FOLDER}")
+    # Nota: os.makedirs(..., exist_ok=True) evita errores si ya existe (en caso de disco persistente).
     os.makedirs(UPLOAD_FOLDER, exist_ok=True) 
 # -------------------------------------------------------------------------
 
@@ -46,9 +47,9 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
 if DATABASE_URL:
-    # Estamos en Render (Producción)
+    # Estamos en Render (Producción) - Se conecta a PostgreSQL
     
-    # Render usa 'postgres://' pero SQLAlchemy prefiere 'postgresql://'
+    # Render usa 'postgres://' pero SQLAlchemy/psycopg2 prefiere 'postgresql://'
     url = urlparse(DATABASE_URL)
     if url.scheme == 'postgres':
         fixed_url = url._replace(scheme='postgresql').geturl()
@@ -59,7 +60,7 @@ if DATABASE_URL:
     print("Usando base de datos PostgreSQL (Render).")
     
 else:
-    # Estamos en Local (Desarrollo)
+    # Estamos en Local (Desarrollo) - Usa SQLite
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///tickets.db'
     print("Usando base de datos SQLite (Local).")
 # ---------------------------------------------------------------------
@@ -74,9 +75,6 @@ def allowed_file(filename):
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 # --- Modelos de la Base de Datos (SQLAlchemy) ---
-# NOTA: Usar 'datetime.utcnow' o 'db.func.now()' depende de si usas Python
-# o la función de la DB. Mantuve 'datetime.utcnow' para la notificación
-# para consistencia con servidores y 'db.func.now()' para Tickets/Comentarios.
 
 class Zona(db.Model):
     __tablename__ = 'zona'
@@ -99,7 +97,6 @@ class Ticket(db.Model):
     titulo = db.Column(db.String(100), nullable=False)
     descripcion = db.Column(db.Text, nullable=False)
     estado = db.Column(db.String(20), default='Abierto') 
-    # Usar datetime.utcnow es más compatible con servidores y PostgreSQL
     fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow) 
     creador_id = db.Column(db.Integer, db.ForeignKey('usuario.id'), nullable=False) 
     comentarios = db.relationship('Comentario', backref='ticket', lazy=True, order_by="Comentario.fecha_creacion")
@@ -118,7 +115,6 @@ class Comentario(db.Model):
     usuario_id = db.Column(db.String(20), nullable=False) 
     usuario_acceso = db.Column(db.String(4), nullable=False) 
 
-# --- NUEVO MODELO DE NOTIFICACIONES ---
 class Notificacion(db.Model):
     __tablename__ = 'notificacion'
     id = db.Column(db.Integer, primary_key=True)
@@ -130,7 +126,6 @@ class Notificacion(db.Model):
     fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow) 
     
     ticket = db.relationship('Ticket', backref='notificaciones')
-# -------------------------------------
 
 # --- Función auxiliar para crear notificaciones ---
 def crear_notificacion(usuario_id, ticket_id, tipo, mensaje):
@@ -190,7 +185,7 @@ def admin_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-# --- Rutas de Autenticación y Navegación (Sin cambios) ---
+# --- Rutas de Autenticación y Navegación ---
 
 @app.route('/', methods=['GET', 'POST'])
 @app.route('/login', methods=['GET', 'POST'])
@@ -245,7 +240,7 @@ def panel_inicio():
     else:
         return redirect(url_for('logout'))
 
-# --- Rutas de Usuario (Sin cambios en lógica) ---
+# --- Rutas de Usuario ---
 
 @app.route('/mis_tickets')
 @login_required
@@ -305,7 +300,6 @@ def crear_ticket():
     if 'photo' in request.files:
         file = request.files['photo']
         if file.filename != '' and allowed_file(file.filename):
-            # La carpeta ya debería existir, pero se comprueba por seguridad
             if not os.path.exists(app.config['UPLOAD_FOLDER']):
                 os.makedirs(app.config['UPLOAD_FOLDER'])
                 
@@ -333,7 +327,7 @@ def crear_ticket():
     
     return redirect(url_for('lista_tickets_usuario')) 
 
-# --- Rutas de Administrador (Sin cambios en lógica) ---
+# --- Rutas de Administrador ---
 
 @app.route('/admin', methods=['GET'])
 @admin_required
@@ -647,41 +641,28 @@ def acusar_cierre(ticket_id):
     return redirect(url_for('ver_ticket', ticket_id=ticket_id))
 
 
-# --- Rutas de Archivos (Sin cambios) ---
+# --- Rutas de Archivos ---
 
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
-# --- Inicialización (Modificado) ---
+# --- Inicialización ---
 
 # Función para inicializar la DB (crear tablas y admin)
-# NOTA: Esta función es llamada por initialize_db.py en el Build Command
+# Esta función es llamada por initialize_db.py en el Build Command
 def init_db():
     with app.app_context():
-        print("Creando todas las tablas de la base de datos...")
-        db.create_all() 
-        
-        admin = Usuario.query.filter_by(numero_acceso='9898').first()
-        if not admin:
-            print("Creando usuario administrador por defecto...")
-            admin_user = Usuario(
-                nombre_completo='ADMINISTRADOR',
-                numero_acceso='9898',
-                rol='admin'
-            )
-            db.session.add(admin_user)
-            db.session.commit()
-        else:
-            print("El usuario administrador ya existe.")
+        # db.create_all() está en initialize_db.py. 
+        # Si usas esta función aquí, asegúrate de que esté dentro de un 'try/except'
+        # para evitar fallos si la base de datos ya está creada y solo se ejecuta
+        # por initialize_db.py.
+        pass # La lógica de create_all y el admin se movió a initialize_db.py
 
 if __name__ == '__main__':
-    # La comprobación de la carpeta ya se hace arriba, pero la mantenemos para desarrollo local
-    if not os.path.exists(UPLOAD_FOLDER):
-        os.makedirs(UPLOAD_FOLDER)
-        
-    # Inicializa la DB al arrancar localmente
-    init_db()
+    # Esto es solo para ejecución local, Render no lo usa
+    with app.app_context():
+        db.create_all()
             
     app.run(debug=True, host='0.0.0.0', port=5000)
 
