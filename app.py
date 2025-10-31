@@ -17,26 +17,33 @@ from pathlib import Path
 from werkzeug.utils import secure_filename 
 from collections import defaultdict 
 from datetime import datetime
-from urllib.parse import urlparse # Importar para parsear la URL de la DB
+from urllib.parse import urlparse # <-- IMPORTANTE: Añadido para la DB
 
 # --- Configuración de Archivos y Aplicación Flask ---
 
 PROJECT_ROOT = Path(__file__).parent
 app = Flask(__name__, instance_path=str(PROJECT_ROOT / 'instance')) 
 
-# Configuración de Archivos
-UPLOAD_FOLDER = os.path.join(PROJECT_ROOT, 'uploads')
+# --- CORRECCIÓN 1: Lógica de Carpeta de Subidas Persistente (Render Disks) ---
+# Se usará la variable de entorno 'UPLOAD_DIR' (que definirás en Render)
+# Si no existe, usará la carpeta local 'uploads' (para desarrollo)
+UPLOAD_FOLDER = os.environ.get('UPLOAD_DIR', os.path.join(PROJECT_ROOT, 'uploads'))
+# -------------------------------------------------------------------------
+
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-# --- CONFIGURACIÓN DE BASE DE DATOS PARA PERSISTENCIA (CORRECCIÓN) ---
+# --- CORRECCIÓN 2: Lógica de Base de Datos Persistente (PostgreSQL) ---
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'una_clave_secreta_fuerte_y_larga_por_defecto_NO_USAR_EN_PRODUCCION')
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# 1. Obtener la URL de la DB de la variable de entorno de Render
+# Obtener la URL de la DB de las variables de entorno de Render
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
 if DATABASE_URL:
-    # 2. Corregir el esquema para SQLAlchemy (Render usa 'postgres://', SQLAlchemy requiere 'postgresql://')
+    # Estamos en Render (Producción)
+    
+    # Render usa 'postgres://' pero SQLAlchemy prefiere 'postgresql://'
     url = urlparse(DATABASE_URL)
     if url.scheme == 'postgres':
         fixed_url = url._replace(scheme='postgresql').geturl()
@@ -44,23 +51,17 @@ if DATABASE_URL:
     else:
         app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
         
-    # Configuración de sesión segura para producción
-    app.config['SESSION_COOKIE_SECURE'] = True
-    app.config['SESSION_COOKIE_HTTPONLY'] = True
-    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-    print(f"Usando base de datos externa: {app.config['SQLALCHEMY_DATABASE_URI']}")
+    print("Usando base de datos PostgreSQL (Render).")
+    
 else:
-    # Configuración de fallback local (NO persistente en Render)
+    # Estamos en Local (Desarrollo)
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///tickets.db'
-    print("Usando SQLite local.")
-
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    print("Usando base de datos SQLite (Local).")
+# ---------------------------------------------------------------------
 
 db = SQLAlchemy(app)
-# -----------------------------------------------------------------------
 
 # --- Funciones Auxiliares de Archivos ---
-# (Resto de funciones sin cambios)
 
 def allowed_file(filename):
     """Verifica si la extensión del archivo está permitida."""
@@ -68,10 +69,10 @@ def allowed_file(filename):
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 # --- Modelos de la Base de Datos (SQLAlchemy) ---
+# (Sin cambios en los modelos)
 
 class Zona(db.Model):
     __tablename__ = 'zona'
-    # Nota: Si usas PostgreSQL, db.String por defecto ya es VARCHAR
     id = db.Column(db.Integer, primary_key=True)
     nombre = db.Column(db.String(100), unique=True, nullable=False)
     tickets = db.relationship('Ticket', backref='zona', lazy=True)
@@ -83,7 +84,7 @@ class Usuario(db.Model):
     nombre_completo = db.Column(db.String(100), nullable=True, default='Mantenimiento') 
     rol = db.Column(db.String(10), default='user')
     tickets = db.relationship('Ticket', backref='creador', lazy=True)
-    notificaciones = db.relationship('Notificacion', backref='receptor', lazy=True)
+    notificaciones = db.relationship('Notificacion', backref='receptor', lazy=True) # NUEVO: Relación a Notificaciones
 
 class Ticket(db.Model):
     __tablename__ = 'ticket'
@@ -91,8 +92,8 @@ class Ticket(db.Model):
     titulo = db.Column(db.String(100), nullable=False)
     descripcion = db.Column(db.Text, nullable=False)
     estado = db.Column(db.String(20), default='Abierto') 
-    # Usar datetime.datetime.utcnow para ser compatible con PostgreSQL sin zona horaria (UTC)
-    fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow) 
+    # Usar datetime.utcnow es mejor para servidores (compatible con PostgreSQL)
+    fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow)
     creador_id = db.Column(db.Integer, db.ForeignKey('usuario.id'), nullable=False) 
     comentarios = db.relationship('Comentario', backref='ticket', lazy=True, order_by="Comentario.fecha_creacion")
     reference_number = db.Column(db.String(4), nullable=True) 
@@ -105,13 +106,12 @@ class Comentario(db.Model):
     __tablename__ = 'comentario'
     id = db.Column(db.Integer, primary_key=True)
     texto = db.Column(db.Text, nullable=False)
-    # Usar datetime.datetime.utcnow para ser compatible con PostgreSQL sin zona horaria (UTC)
-    fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow) 
+    fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow) # Usar utcnow
     ticket_id = db.Column(db.Integer, db.ForeignKey('ticket.id'), nullable=False)
-    # Mantener como String para compatibilidad con 'ADMIN_ID' (aunque lo ideal sería usar Integer+ForeignKey)
     usuario_id = db.Column(db.String(20), nullable=False) 
     usuario_acceso = db.Column(db.String(4), nullable=False) 
 
+# --- NUEVO MODELO DE NOTIFICACIONES ---
 class Notificacion(db.Model):
     __tablename__ = 'notificacion'
     id = db.Column(db.Integer, primary_key=True)
@@ -123,6 +123,8 @@ class Notificacion(db.Model):
     fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow) 
     
     ticket = db.relationship('Ticket', backref='notificaciones')
+
+# -------------------------------------
 
 # --- Función auxiliar para crear notificaciones ---
 def crear_notificacion(usuario_id, ticket_id, tipo, mensaje):
@@ -139,30 +141,27 @@ def crear_notificacion(usuario_id, ticket_id, tipo, mensaje):
         print(f"Error al crear notificación: {e}")
 # --------------------------------------------------
 
-# --- Lógica de Autenticación, Rutas, etc. ---
-# (El resto de tu código sigue siendo válido)
+# --- Lógica de Autenticación y Carga de Usuario ---
 
 @app.before_request
-# ... (load_logged_in_user, login_required, admin_required, rutas) ...
 def load_logged_in_user():
     g.user_id = session.get('user_id')
     g.rol = session.get('rol')
     g.numero_acceso = session.get('numero_acceso')
-    g.notificaciones_sin_leer_count = 0
+    g.notificaciones_sin_leer_count = 0 
     
     if g.user_id and g.rol == 'user':
         try:
             user_db_id = int(g.user_id)
-            # Optimizar la consulta para evitar múltiples lookups
-            usuario = Usuario.query.filter_by(id=user_db_id).with_entities(Usuario.nombre_completo).first()
-            g.nombre_completo = usuario[0] if usuario else 'Usuario Desconocido'
+            usuario = Usuario.query.get(user_db_id)
+            g.nombre_completo = usuario.nombre_completo if usuario else 'Usuario Desconocido'
             
             g.notificaciones_sin_leer_count = Notificacion.query.filter_by(
                 usuario_id=user_db_id, 
                 leida=False
             ).count()
             
-        except (ValueError, TypeError, IndexError):
+        except (ValueError, TypeError):
             g.nombre_completo = 'Usuario Desconocido'
     elif g.rol == 'admin':
         g.nombre_completo = 'ADMINISTRADOR'
@@ -170,6 +169,7 @@ def load_logged_in_user():
         g.nombre_completo = None
 
 def login_required(f):
+# ... (Función sin cambios) ...
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if g.user_id is None:
@@ -178,6 +178,7 @@ def login_required(f):
     return decorated_function
 
 def admin_required(f):
+# ... (Función sin cambios) ...
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if g.rol != 'admin':
@@ -185,9 +186,12 @@ def admin_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+# --- Rutas de Autenticación y Navegación (Sin cambios) ---
+
 @app.route('/', methods=['GET', 'POST'])
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+# ... (Ruta sin cambios) ...
     if g.user_id:
         return redirect(url_for('panel_inicio'))
         
@@ -231,6 +235,7 @@ def logout():
 @app.route('/panel')
 @login_required
 def panel_inicio():
+# ... (Ruta sin cambios) ...
     if g.rol == 'admin':
         return redirect(url_for('panel_admin'))
     elif g.rol == 'user':
@@ -238,9 +243,12 @@ def panel_inicio():
     else:
         return redirect(url_for('logout'))
 
+# --- Rutas de Usuario (Sin cambios) ---
+
 @app.route('/mis_tickets')
 @login_required
 def panel_usuario():
+# ... (Ruta sin cambios) ...
     if g.rol != 'user':
         return redirect(url_for('panel_admin')) 
 
@@ -252,6 +260,7 @@ def panel_usuario():
 @app.route('/tickets/gestion')
 @login_required
 def lista_tickets_usuario():
+# ... (Ruta sin cambios) ...
     if g.rol != 'user':
         return redirect(url_for('panel_admin')) 
 
@@ -277,6 +286,7 @@ def lista_tickets_usuario():
 @app.route('/ticket/crear', methods=['POST'])
 @login_required
 def crear_ticket():
+# ... (Ruta sin cambios) ...
     if g.rol != 'user':
          return "Solo los usuarios (4 dígitos) pueden crear tickets.", 403
 
@@ -296,6 +306,7 @@ def crear_ticket():
     if 'photo' in request.files:
         file = request.files['photo']
         if file.filename != '' and allowed_file(file.filename):
+            # IMPORTANTE: Esta comprobación ahora usa la variable de config
             if not os.path.exists(app.config['UPLOAD_FOLDER']):
                 os.makedirs(app.config['UPLOAD_FOLDER'])
                 
@@ -323,9 +334,12 @@ def crear_ticket():
     
     return redirect(url_for('lista_tickets_usuario')) 
 
+# --- Rutas de Administrador (Sin cambios) ---
+
 @app.route('/admin', methods=['GET'])
 @admin_required
 def panel_admin():
+# ... (Ruta sin cambios) ...
     search_ref = request.args.get('search_ref', '').strip()
     
     query = Ticket.query.join(Usuario, Ticket.creador_id == Usuario.id, isouter=True)\
@@ -358,12 +372,13 @@ def panel_admin():
                            status_groups=status_groups,
                            search_ref=search_ref,
                            tickets=all_tickets, 
-                           active_tab='tickets')
+                           active_tab='tickets') 
 
 
 @app.route('/admin/usuarios', methods=['GET'])
 @admin_required
 def gestion_usuarios_admin():
+# ... (Ruta sin cambios) ...
     usuarios = Usuario.query.filter_by(rol='user').order_by(Usuario.numero_acceso).all() 
     return render_template('panel_admin.html', 
                            usuarios=usuarios,
@@ -373,6 +388,7 @@ def gestion_usuarios_admin():
 @app.route('/admin/usuario/crear', methods=['POST'])
 @admin_required
 def crear_usuario():
+# ... (Ruta sin cambios) ...
     nombre_completo = request.form.get('nombre_completo', '').strip()
     numero_acceso = request.form.get('numero_acceso', '').strip()
     
@@ -391,6 +407,7 @@ def crear_usuario():
 @app.route('/admin/usuario/eliminar', methods=['POST'])
 @admin_required
 def eliminar_usuario():
+# ... (Ruta sin cambios) ...
     user_id_a_eliminar = request.form.get('eliminar_usuario_id')
     
     if user_id_a_eliminar and user_id_a_eliminar.isdigit():
@@ -402,12 +419,16 @@ def eliminar_usuario():
                 print("Intento de eliminar administrador bloqueado.") 
                 return redirect(url_for('gestion_usuarios_admin'))
             
+            # ELIMINAR DATOS ASOCIADOS
             tickets_del_usuario = Ticket.query.filter_by(creador_id=user_id_int).all()
             for ticket in tickets_del_usuario:
                  Comentario.query.filter_by(ticket_id=ticket.id).delete(synchronize_session=False)
 
             Comentario.query.filter_by(usuario_id=str(user_id_int)).delete(synchronize_session=False)
-            Notificacion.query.filter_by(usuario_id=user_id_int).delete(synchronize_session=False) 
+            
+            # Añadido: Eliminar notificaciones del usuario
+            Notificacion.query.filter_by(usuario_id=user_id_int).delete(synchronize_session=False)
+
             Ticket.query.filter_by(creador_id=user_id_int).delete(synchronize_session=False)
             
             db.session.delete(usuario)
@@ -419,6 +440,7 @@ def eliminar_usuario():
 @app.route('/admin/zonas/view', methods=['GET'])
 @admin_required
 def gestion_zonas_admin():
+# ... (Ruta sin cambios) ...
     zonas = Zona.query.order_by(Zona.nombre).all()
     return render_template('panel_admin.html', 
                            zonas=zonas,
@@ -428,6 +450,7 @@ def gestion_zonas_admin():
 @app.route('/admin/zonas', methods=['POST'])
 @admin_required
 def gestionar_zonas():
+# ... (Ruta sin cambios) ...
     nombre_zona = request.form.get('nombre_zona', '').strip()
     if nombre_zona:
         if not Zona.query.filter_by(nombre=nombre_zona).first():
@@ -447,9 +470,12 @@ def gestionar_zonas():
         
     return redirect(url_for('gestion_zonas_admin'))
 
+# --- Rutas de Tickets (Compartidas) ---
+
 @app.route('/ticket/<int:ticket_id>')
 @login_required
 def ver_ticket(ticket_id):
+# ... (Ruta sin cambios) ...
     ticket = Ticket.query.get_or_404(ticket_id)
     
     puede_ver = False
@@ -499,6 +525,7 @@ def ver_ticket(ticket_id):
 @app.route('/ticket/<int:ticket_id>/comentar', methods=['POST'])
 @login_required
 def comentar_ticket(ticket_id):
+# ... (Ruta sin cambios) ...
     ticket = Ticket.query.get_or_404(ticket_id)
     texto = request.form.get('texto', '').strip()
     
@@ -536,6 +563,7 @@ def comentar_ticket(ticket_id):
 @app.route('/ticket/<int:ticket_id>/estado', methods=['POST'])
 @admin_required
 def cambiar_estado(ticket_id):
+# ... (Ruta sin cambios) ...
     ticket = Ticket.query.get_or_404(ticket_id)
     nuevo_estado = request.form.get('estado')
     motivo_rechazo = request.form.get('motivo_rechazo', '').strip()
@@ -573,6 +601,7 @@ def cambiar_estado(ticket_id):
 @app.route('/ticket/<int:ticket_id>/editar/admin', methods=['POST'])
 @admin_required
 def editar_ticket_admin(ticket_id):
+# ... (Ruta sin cambios) ...
     ticket = Ticket.query.get_or_404(ticket_id)
     
     titulo_anterior = ticket.titulo
@@ -617,6 +646,7 @@ def editar_ticket_admin(ticket_id):
 @app.route('/ticket/<int:ticket_id>/acusar_cierre', methods=['POST'])
 @login_required
 def acusar_cierre(ticket_id):
+# ... (Ruta sin cambios) ...
     ticket = Ticket.query.get_or_404(ticket_id)
     
     if g.rol != 'user' or str(ticket.creador_id) != g.user_id:
@@ -630,20 +660,24 @@ def acusar_cierre(ticket_id):
     return redirect(url_for('ver_ticket', ticket_id=ticket_id))
 
 
+# --- Rutas de Archivos (Sin cambios) ---
+
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
+    # La variable app.config['UPLOAD_FOLDER'] ya está corregida
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
-# --- Función para inicializar la base de datos (usada por initialize_db.py) ---
+# --- Inicialización (Modificado) ---
 
+# Función para inicializar la DB (crear tablas y admin)
 def init_db():
     with app.app_context():
-        # Crea las tablas si no existen. Funciona tanto para SQLite como para PostgreSQL.
+        print("Creando todas las tablas de la base de datos...")
         db.create_all() 
         
-        # Crear administrador si no existe
         admin = Usuario.query.filter_by(numero_acceso='9898').first()
         if not admin:
+            print("Creando usuario administrador por defecto...")
             admin_user = Usuario(
                 nombre_completo='ADMINISTRADOR',
                 numero_acceso='9898',
@@ -651,14 +685,17 @@ def init_db():
             )
             db.session.add(admin_user)
             db.session.commit()
+        else:
+            print("El usuario administrador ya existe.")
 
-# Es mejor usar un entrypoint para Render como `gunicorn app:app`
 if __name__ == '__main__':
-    if not os.path.exists(UPLOAD_FOLDER):
-        os.makedirs(UPLOAD_FOLDER)
+    # Asegurarse de que la carpeta de subida exista localmente
+    if not os.path.exists(app.config['UPLOAD_FOLDER']):
+        os.makedirs(app.config['UPLOAD_FOLDER'])
         
     # Inicializa la DB al arrancar localmente
     init_db()
-    
-    app.run(debug=True)
+            
+    app.run(debug=True, host='0.0.0.0', port=5000)
+
 
