@@ -1,5 +1,0 @@
-Flask
-Flask-SQLAlchemy
-gunicorn
-psycopg2-binary  # <-- IMPORTANTE: Driver para PostgreSQL
-Werkzeug
